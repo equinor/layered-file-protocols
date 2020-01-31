@@ -1,0 +1,6 @@
+rp66
+====
+
+:code:`#include <lfp/rp66.h>`
+
+.. doxygenfile:: rp66.h

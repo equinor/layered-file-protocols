@@ -47,6 +47,7 @@ details.
    :maxdepth: 3
 
    protocols/cfile
+   protocols/rp66
    protocols/tapeimage
 
 .. toctree::
