@@ -5,7 +5,7 @@
 #include <limits>
 #include <vector>
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <lfp/protocol.hpp>
 #include <lfp/tapeimage.h>
