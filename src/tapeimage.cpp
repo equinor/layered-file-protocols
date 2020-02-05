@@ -185,7 +185,8 @@ int tapeimage::eof() const noexcept (true) {
 }
 
 void tapeimage::read_header() noexcept (false) {
-    assert(this->current     == this->markers.end() or
+    assert(this->markers.empty()                    or
+           this->current     == this->markers.end() or
            this->current + 1 == this->markers.end());
 
     std::int64_t n;
