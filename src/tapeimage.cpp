@@ -23,7 +23,7 @@ public:
     lfp_status readinto(void* dst, std::int64_t len, std::int64_t* bytes_read)
         noexcept (false) override;
 
-    int eof() const noexcept (true);
+    int eof() const noexcept (true) override;
 
     void seek(std::int64_t)   noexcept (false) override;
     std::int64_t tell() const noexcept (false) override;
