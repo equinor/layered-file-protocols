@@ -3,7 +3,7 @@
 #include <cassert>
 #include <vector>
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <lfp/protocol.hpp>
 #include <lfp/memfile.h>

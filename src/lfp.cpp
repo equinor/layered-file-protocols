@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 #include <lfp/lfp.h>
 #include <lfp/protocol.hpp>

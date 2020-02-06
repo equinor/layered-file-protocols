@@ -27,8 +27,10 @@ option(
 # can't be created, which would be nicer. Fall back to string-resolving the
 # namespaced library
 if (LFP_FMT_HEADER_ONLY)
-    set(fmtlib fmt::fmt-header-only)
+    set(fmtlib-header fmt::fmt-header-only)
+    set(fmtlib)
 else ()
+    set(fmtlib-header)
     set(fmtlib fmt::fmt)
 endif ()
 
@@ -70,6 +72,8 @@ add_library(lfp::lfp ALIAS lfp)
 target_link_libraries(lfp
     PUBLIC
         ${fmtlib}
+    PRIVATE
+        ${fmtlib-header}
 )
 
 target_include_directories(lfp
