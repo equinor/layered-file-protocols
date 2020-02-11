@@ -99,7 +99,7 @@ void cfile::seek(std::int64_t n) noexcept (false) {
         throw not_supported(this->ftell_errmsg);
 
     const auto pos = n + this->zero;
-    assert(pos > 0);
+    assert(pos >= 0);
     // TODO: handle fseek failure when pos > limits< long >::max()
     // e.g. by converting to relative seeks
     assert(pos < std::numeric_limits< long >::max());
