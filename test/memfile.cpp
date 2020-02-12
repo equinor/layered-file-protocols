@@ -6,6 +6,7 @@
 
 #include <lfp/lfp.h>
 #include <lfp/memfile.h>
+#include <lfp/tapeimage.h>
 
 #include "utils.hpp"
 
@@ -16,17 +17,40 @@ using namespace Catch::Matchers;
  * itself, both for correctness, but also some "real"-world experience.
  */
 
-TEST_CASE("Closing nullptr is a no-op") {
+TEST_CASE("Closing nullptr is a no-op", "[mem][close]") {
     const auto err = lfp_close(nullptr);
     CHECK(err == LFP_OK);
 }
 
-TEST_CASE("A mem-file can be closed") {
+TEST_CASE("A mem-file can be closed", "[mem][close]") {
     // TODO: replace this with a custom "close-observer file"
     auto f = memopen();
     const auto err = lfp_close(f.get());
     CHECK(err == LFP_OK);
     f.release();
+}
+
+TEST_CASE(
+    "Layered memfile closes correctly",
+    "[mem][close]") {
+    const auto contents = std::vector< unsigned char > {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x18, 0x00, 0x00, 0x00,
+
+        0x01, 0x02, 0x03, 0x04,
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x24, 0x00, 0x00, 0x00,
+    };
+    auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+    auto* outer = lfp_tapeimage_open(mem);
+
+    auto err = lfp_close(outer);
+    CHECK(err == LFP_OK);
 }
 
 TEST_CASE_METHOD(

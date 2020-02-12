@@ -53,6 +53,7 @@ void cfile::close() noexcept (false) {
      * The file handle will always be closed when the destructor is invoked,
      * but when close is invoked directly, errors will be propagated
      */
+    if (!this->fp) return;
     const auto err = std::fclose(this->fp.get());
 
     if (err)
