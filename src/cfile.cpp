@@ -120,6 +120,7 @@ std::int64_t cfile::tell() const noexcept (false) {
 }
 
 lfp_protocol* lfp_cfile(std::FILE* fp) {
+    if (!fp) return nullptr;
     try {
         return new lfp::cfile(fp);
     } catch (...) {

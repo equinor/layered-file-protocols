@@ -48,3 +48,16 @@ TEST_CASE(
     auto err = lfp_close(outer);
     CHECK(err == LFP_OK);
 }
+
+TEST_CASE(
+    "Layering non-existing file is a no-op",
+    "[cfile][filehandle]") {
+
+    FILE* fp    = nullptr;
+    auto* cfile = lfp_cfile(fp);
+    auto* tif   = lfp_tapeimage_open(cfile);
+
+    CHECK(!cfile);
+    CHECK(!tif);
+}
+
