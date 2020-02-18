@@ -52,15 +52,16 @@ struct random_tapeimage : random_memfile {
         auto src = std::begin(expected);
         std::int64_t remaining = expected.size();
         REQUIRE(remaining > 0);
+        std::uint32_t prev = 0;
         for (int i = 0; i < records; ++i) {
             const auto n = std::min(record_size, remaining);
             auto head = std::vector< unsigned char >(12, 0);
-            const std::uint32_t prev = tape.size();
-            const std::uint32_t next = n + prev + head.size();
+            const std::uint32_t next = n + tape.size() + head.size();
             std::memcpy(head.data() + 0, &record, sizeof(record));
             std::memcpy(head.data() + 4, &prev,   sizeof(prev));
             std::memcpy(head.data() + 8, &next,   sizeof(next));
 
+            prev = tape.size();
             tape.insert(tape.end(), head.begin(), head.end());
             tape.insert(tape.end(), src, src + n);
             src += n;
