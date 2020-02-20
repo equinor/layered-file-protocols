@@ -20,6 +20,9 @@ extern "C" {
  * The tapeimage protocol provides a view of as if the record markers were not
  * present. `lfp_seek()` and `lfp_tell()` consider offsets as if the file had
  * no tape markers.
+ *
+ * In case of an error function will return nullptr and will not obtain
+ * ownership over passed protocol.
  */
 lfp_protocol* lfp_tapeimage_open(lfp_protocol*);
 

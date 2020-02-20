@@ -168,6 +168,16 @@ public:
         this->fp.reset(nullptr);
     }
 
+    /** Releases the pointer from unique_lfp ownership
+     *
+     * Underlying pointer is not destroyed, but its fate is no longer
+     * unique_lfp concern
+     */
+    void release() noexcept (true) {
+        assert(this->fp);
+        this->fp.release();
+    }
+
     /** Conversion to `bool`
      *
      *  Checks whether an object is owned.

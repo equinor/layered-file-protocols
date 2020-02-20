@@ -77,7 +77,12 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
      * the day, though, the only way to properly determine what's going on is
      * to interrogate the underlying handle more thoroughly.
      */
-    this->read_header();
+    try {
+        this->read_header();
+    } catch (const lfp::error& e) {
+        this->fp.release();
+        throw;
+    }
 }
 
 void tapeimage::close() noexcept (false) {

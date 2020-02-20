@@ -6,6 +6,7 @@
 #include <catch2/catch.hpp>
 
 #include <lfp/memfile.h>
+#include <lfp/protocol.hpp>
 #include <lfp/tapeimage.h>
 #include <lfp/lfp.h>
 
@@ -318,4 +319,45 @@ TEST_CASE(
 
     auto err = lfp_close(outer);
     CHECK(err == LFP_OK);
+}
+
+TEST_CASE(
+    "Error in tapeimage constructor doesn't destroy underlying file",
+    "[tapeimage][open]") {
+
+    class memfake : public lfp_protocol
+    {
+      public:
+        memfake(int *livepointer) {
+            this->livepointer = livepointer;
+            *this->livepointer += 1;
+        }
+        ~memfake() override {
+            *this->livepointer -= 1;
+        }
+
+        void close() noexcept(true) override {}
+        lfp_status readinto(
+            void *dst,
+            std::int64_t len,
+            std::int64_t *bytes_read) noexcept(true) override {
+            return LFP_RUNTIME_ERROR;
+        }
+
+        int eof() const noexcept(true) override { return 0; }
+
+      private:
+        int *livepointer;
+    };
+
+    int counter = 0;
+    int* livepointer = &counter;
+    auto* mem = new memfake(livepointer);
+    CHECK(counter == 1);
+    auto* tif = lfp_tapeimage_open(mem);
+
+    CHECK(tif == nullptr);
+    CHECK(counter == 1);
+
+    lfp_close(mem);
 }
