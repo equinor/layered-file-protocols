@@ -139,6 +139,7 @@ if (NOT TARGET Catch2::Catch2)
 endif ()
 
 add_executable(unit-tests
+    test/cfile.cpp
     test/main.cpp
     test/memfile.cpp
     test/tapeimage.cpp

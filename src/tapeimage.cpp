@@ -81,7 +81,7 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
 }
 
 void tapeimage::close() noexcept (false) {
-    assert(this->fp);
+    if(!this->fp) return;
     this->fp.close();
 }
 

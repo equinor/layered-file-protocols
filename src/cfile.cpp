@@ -53,6 +53,7 @@ void cfile::close() noexcept (false) {
      * The file handle will always be closed when the destructor is invoked,
      * but when close is invoked directly, errors will be propagated
      */
+    if (!this->fp) return;
     const auto err = std::fclose(this->fp.get());
 
     if (err)
@@ -119,6 +120,7 @@ std::int64_t cfile::tell() const noexcept (false) {
 }
 
 lfp_protocol* lfp_cfile(std::FILE* fp) {
+    if (!fp) return nullptr;
     try {
         return new lfp::cfile(fp);
     } catch (...) {

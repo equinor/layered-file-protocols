@@ -23,7 +23,11 @@
  */
 class lfp_protocol {
 public:
-    /** \copybrief lfp_close */
+    /** \copybrief lfp_close
+     *
+     * Multiple calls to 'close' must be allowed in order to correctly handle
+     * nested protocols.
+     */
     virtual void close() noexcept (false) = 0;
 
     /** \copybrief lfp_readinto
@@ -162,6 +166,14 @@ public:
     void close() noexcept (false) {
         this->fp->close();
         this->fp.reset(nullptr);
+    }
+
+    /** Conversion to `bool`
+     *
+     *  Checks whether an object is owned.
+     */
+    explicit operator bool() noexcept (true) {
+        return bool(this->fp);
     }
 
 private:
