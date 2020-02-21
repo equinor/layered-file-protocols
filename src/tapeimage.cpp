@@ -77,7 +77,12 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
      * the day, though, the only way to properly determine what's going on is
      * to interrogate the underlying handle more thoroughly.
      */
-    this->read_header();
+    try {
+        this->read_header();
+    } catch (const lfp::error& e) {
+        this->fp.release();
+        throw;
+    }
 }
 
 void tapeimage::close() noexcept (false) {
@@ -241,7 +246,7 @@ void tapeimage::read_header() noexcept (false) {
         throw protocol_fatal(fmt::format(msg, head.next, head.prev));
     }
 
-    if (not this->markers.empty()) {
+    if (this->markers.size() >= 2) {
         /*
          * backpointer is not consistent with this header's previous - this is
          * recoverable, under the assumption it's the *back pointer* that is
@@ -253,9 +258,10 @@ void tapeimage::read_header() noexcept (false) {
          *
          * TODO: should taint the handle, unless explicitly cleared
          */
-        if (head.type == 0 and head.prev != this->markers.back().next) {
+        const auto& back2 = *std::prev(this->markers.end(), 2);
+        if (head.prev != back2.next) {
             this->recovery = LFP_PROTOCOL_TRYRECOVERY;
-            head.prev = this->markers.back().next;
+            head.prev = back2.next;
         }
     }
 

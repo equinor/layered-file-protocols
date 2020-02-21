@@ -6,6 +6,7 @@
 #include <catch2/catch.hpp>
 
 #include <lfp/memfile.h>
+#include <lfp/protocol.hpp>
 #include <lfp/tapeimage.h>
 #include <lfp/lfp.h>
 
@@ -51,15 +52,16 @@ struct random_tapeimage : random_memfile {
         auto src = std::begin(expected);
         std::int64_t remaining = expected.size();
         REQUIRE(remaining > 0);
+        std::uint32_t prev = 0;
         for (int i = 0; i < records; ++i) {
             const auto n = std::min(record_size, remaining);
             auto head = std::vector< unsigned char >(12, 0);
-            const std::uint32_t prev = tape.size();
-            const std::uint32_t next = n + prev + head.size();
+            const std::uint32_t next = n + tape.size() + head.size();
             std::memcpy(head.data() + 0, &record, sizeof(record));
             std::memcpy(head.data() + 4, &prev,   sizeof(prev));
             std::memcpy(head.data() + 8, &next,   sizeof(next));
 
+            prev = tape.size();
             tape.insert(tape.end(), head.begin(), head.end());
             tape.insert(tape.end(), src, src + n);
             src += n;
@@ -75,7 +77,8 @@ struct random_tapeimage : random_memfile {
         };
 
         const std::uint32_t eof = tape.size() + 12;
-        std::memcpy(tail.data() + 8, &eof, sizeof(eof));
+        std::memcpy(tail.data() + 4, &prev, sizeof(prev));
+        std::memcpy(tail.data() + 8, &eof,  sizeof(eof));
         tape.insert(tape.end(), tail.begin(), tail.end());
 
         REQUIRE(tape.size() == eof);
@@ -318,4 +321,45 @@ TEST_CASE(
 
     auto err = lfp_close(outer);
     CHECK(err == LFP_OK);
+}
+
+TEST_CASE(
+    "Error in tapeimage constructor doesn't destroy underlying file",
+    "[tapeimage][open]") {
+
+    class memfake : public lfp_protocol
+    {
+      public:
+        memfake(int *livepointer) {
+            this->livepointer = livepointer;
+            *this->livepointer += 1;
+        }
+        ~memfake() override {
+            *this->livepointer -= 1;
+        }
+
+        void close() noexcept(true) override {}
+        lfp_status readinto(
+            void *dst,
+            std::int64_t len,
+            std::int64_t *bytes_read) noexcept(true) override {
+            return LFP_RUNTIME_ERROR;
+        }
+
+        int eof() const noexcept(true) override { return 0; }
+
+      private:
+        int *livepointer;
+    };
+
+    int counter = 0;
+    int* livepointer = &counter;
+    auto* mem = new memfake(livepointer);
+    CHECK(counter == 1);
+    auto* tif = lfp_tapeimage_open(mem);
+
+    CHECK(tif == nullptr);
+    CHECK(counter == 1);
+
+    lfp_close(mem);
 }
