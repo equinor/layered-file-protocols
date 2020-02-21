@@ -259,7 +259,7 @@ void tapeimage::read_header() noexcept (false) {
          * TODO: should taint the handle, unless explicitly cleared
          */
         const auto& back2 = *std::prev(this->markers.end(), 2);
-        if (head.type == 0 and head.prev != back2.next) {
+        if (head.prev != back2.next) {
             this->recovery = LFP_PROTOCOL_TRYRECOVERY;
             head.prev = back2.next;
         }

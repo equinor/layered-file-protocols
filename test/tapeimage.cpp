@@ -77,7 +77,8 @@ struct random_tapeimage : random_memfile {
         };
 
         const std::uint32_t eof = tape.size() + 12;
-        std::memcpy(tail.data() + 8, &eof, sizeof(eof));
+        std::memcpy(tail.data() + 4, &prev, sizeof(prev));
+        std::memcpy(tail.data() + 8, &eof,  sizeof(eof));
         tape.insert(tape.end(), tail.begin(), tail.end());
 
         REQUIRE(tape.size() == eof);
