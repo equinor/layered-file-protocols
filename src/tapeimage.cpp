@@ -234,6 +234,23 @@ void tapeimage::read_header() noexcept (false) {
     std::memcpy(&head.prev, b + 1 * 4, 4);
     std::memcpy(&head.next, b + 2 * 4, 4);
 
+    if (head.type != tapeimage::record and head.type != tapeimage::file) {
+        /*
+         * probably recoverable *if* this is the only error - maybe someone
+         * wrote the wrong record type by accident, or simply use some
+         * extension with more record types for semantics.
+         *
+         * If it's the only error in this record, recover by ignoring it and
+         * pretend it's a record (= 0) type.
+         */
+        if (this->recovery) {
+            const auto msg = "tapeimage: unknown head.type in recovery, "
+                             "file probably corrupt";
+            throw protocol_failed_recovery(msg);
+        }
+        this->recovery = LFP_PROTOCOL_TRYRECOVERY;
+    }
+
     if (head.next <= head.prev) {
         /*
          * There's no reasonable recovery if next is smaller than prev, as it's
@@ -263,23 +280,6 @@ void tapeimage::read_header() noexcept (false) {
             this->recovery = LFP_PROTOCOL_TRYRECOVERY;
             head.prev = back2.next;
         }
-    }
-
-    if (head.type != tapeimage::record and head.type != tapeimage::file) {
-        /*
-         * probably recoverable *if* this is the only error - maybe someone
-         * wrote the wrong record type by accident, or simply use some
-         * extension with more record types for semantics.
-         *
-         * If it's the only error in this record, recover by ignoring it and
-         * pretend it's a record (= 0) type.
-         */
-        if (this->recovery) {
-            const auto msg = "tapeimage: unknown head.type in recovery, "
-                             "file probably corrupt";
-            throw protocol_failed_recovery(msg);
-        }
-        this->recovery = LFP_PROTOCOL_TRYRECOVERY;
     }
 
     this->append(head);
