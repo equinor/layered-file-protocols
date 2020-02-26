@@ -593,3 +593,148 @@ TEST_CASE(
         run(contents, expected_error);
     }
 }
+
+TEST_CASE(
+    "Operations on 4GB file",
+    "[tapeimage][4GB][unsafe]") {
+    /*
+     * Setup created to avoid dealing with actual 4GB files. Space to read the
+     * data is not created, lonely pointer is used instead. Pointer arithmetics
+     * is performed on it, but the memory under it is never read. Still, some
+     * memory-leaking tools might detect this behavior. Depending on the
+     * assigned address, pointer overflow might happen, but it doesn't matter
+     * for the test.
+     *
+     * Currently test asumes that we ignore files over 4GB and do not attempt
+     * to read overflown parts.
+     */
+
+    using header = std::vector< unsigned char >;
+
+    class memfake : public lfp_protocol
+    {
+      public:
+        memfake()
+        {
+            //assumption that it zeroes out on overflow
+            //2GB + 12 header bytes
+            header h1 = {
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x0C, 0x00, 0x00, 0x80,
+            };
+
+            //1GB + 12 header bytes
+            header h2 = {
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x18, 0x00, 0x00, 0xC0,
+            };
+
+            //2GB + 12 header bytes - overflow header
+            header h3 = {
+                0x00, 0x00, 0x00, 0x00,
+                0x0C, 0x00, 0x00, 0x80,
+                0x24, 0x00, 0x00, 0x40,
+            };
+
+            //5GB + 3 headers by 12 bytes
+            this->headers.push_back(h1);
+            this->headers.push_back(h2);
+            this->headers.push_back(h3);
+            this->it = this->headers.begin();
+        }
+
+        void close() noexcept(true) override {}
+        lfp_status readinto(
+            void *dst,
+            std::int64_t len,
+            std::int64_t *bytes_read) noexcept(true) override
+        {
+            if(len == 12){
+                //pretend we are reading header
+                header hd = *this->it;
+                this->it = std::next(this->it);
+                std::memcpy(dst, hd.data(), len);
+            }
+
+            *bytes_read = len;
+            return LFP_OK;
+        }
+
+        int eof() const noexcept(true) override { return 0; }
+
+        void seek(std::int64_t n) noexcept (false) {
+            // for the purpose of this test do nothing and
+            // let readinto to handle return of the correct header
+            return;
+        }
+
+      private:
+        std::vector< header > headers;
+        std::vector< header >::const_iterator it;
+    };
+
+    auto* mem = new memfake();
+    auto* tif = lfp_tapeimage_open(mem);
+
+    unsigned char fake_mem = 1;
+    unsigned char* dst = &fake_mem;
+
+    const size_t GB = 1024 * 1024 * 1024;
+
+    SECTION( "read over 4GB data in one chunk" ) {
+        std::int64_t nread = 0;
+        const auto err = lfp_readinto(tif, dst, 4*GB + 1, &nread);
+        CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
+
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("4GB"));
+    }
+
+    SECTION( "read over 4GB data in 2 chunks" ) {
+        std::int64_t nread = 0;
+        auto err = lfp_readinto(tif, dst, 3*GB, &nread);
+        CHECK(err == LFP_OK);
+
+        err = lfp_readinto(tif, dst, 2*GB, &nread);
+        CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
+
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("4GB"));
+    }
+
+    SECTION( "read little less than 4GB of data in over 4GB file" ) {
+        /* We read less than 4GB, but added header size causes overflow */
+        std::int64_t nread = 0;
+        auto err = lfp_readinto(tif, dst, 4*GB - 2, &nread);
+        CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
+
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("4GB"));
+    }
+
+    SECTION( "seek beyond 4GB" ) {
+        auto err = lfp_seek(tif, 4*GB + 1);
+        CHECK(err == LFP_INVALID_ARGS);
+
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("4GB"));
+    }
+
+    SECTION( "seek beyond 4GB when zero is close to 4GB" ) {
+        /*
+        // TODO:
+        // would be the case of several logical files
+
+        // set TIF start to be at 3GB + 24 bytes (header2)
+
+        auto err = lfp_seek(tif, 2*GB);
+        CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
+
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("4GB")); */
+    }
+
+    lfp_close(tif);
+}

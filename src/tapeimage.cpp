@@ -95,8 +95,6 @@ lfp_status tapeimage::readinto(
         std::int64_t len,
         std::int64_t* bytes_read)
 noexcept (false) {
-    if (std::numeric_limits<std::uint32_t>::max() < len)
-        throw invalid_args("len > uint32_max");
 
     const auto n = this->readinto(dst, len);
     assert(n <= len);
@@ -261,6 +259,10 @@ void tapeimage::read_header() noexcept (false) {
          * likely either the previous pointer which is broken, or this entire
          * header.
          *
+         * This will happen for over 4GB files. As we do not support them at
+         * the moment, this check should detect them and prevent further
+         * invalid state.
+         *
          * At least for now, consider it a non-recoverable error.
          */
         if (!header_type_consistent) {
@@ -357,6 +359,11 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
 void tapeimage::seek(std::int64_t n) noexcept (false) {
     assert(not this->markers.empty());
     assert(n >= 0);
+
+    if (std::numeric_limits<std::uint32_t>::max() < n)
+        throw invalid_args("Too big seek offset. TIF protocol does not "
+                           "support files larger than 4GB");
+
     if (n < 0)
         throw invalid_args("seek offset n < 0");
 
