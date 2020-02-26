@@ -363,3 +363,209 @@ TEST_CASE(
 
     lfp_close(mem);
 }
+
+TEST_CASE(
+    "Broken TIF - recovery mode",
+    "[tapeimage][errorcase][incomplete]") {
+    const auto contents = std::vector< unsigned char > {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x18, 0x00, 0x00, 0x00,
+
+        0x01, 0x02, 0x03, 0x04,
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0xFF, 0xFF, 0xFF, 0xFF,  //broken type
+        0x00, 0x00, 0x00, 0x00,
+        0x30, 0x00, 0x00, 0x00,
+
+        0x01, 0x02, 0x03, 0x04,
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0xFF, 0xFF, 0xFF, 0xFF,  //broken again
+        0x18, 0x00, 0x00, 0x00,
+        0x48, 0x00, 0x00, 0x00,
+
+        0x01, 0x02, 0x03, 0x04,
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x30, 0x00, 0x00, 0x00,
+        0x54, 0x00, 0x00, 0x00,
+    };
+
+    auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+    auto* tif = lfp_tapeimage_open(mem);
+    {
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+
+        CHECK(err == LFP_PROTOCOL_TRYRECOVERY);
+        CHECK(bytes_read == 16);
+
+        const auto expected = std::vector< unsigned char > {
+            0x01, 0x02, 0x03, 0x04,
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+            0x01, 0x02, 0x03, 0x04,
+        };
+        CHECK_THAT(out, Equals(expected));
+    }
+
+    SECTION( "try recovery: no new error" ) {
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+
+        CHECK(err == LFP_PROTOCOL_TRYRECOVERY);
+        CHECK(bytes_read == 8);
+
+        const auto expected = std::vector< unsigned char > {
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+        };
+        CHECK_THAT(out, Equals(expected));
+    }
+
+    SECTION( "try recovery: new error" ) {
+        auto out = std::vector< unsigned char >(12, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 12, &bytes_read);
+
+        CHECK(err == LFP_PROTOCOL_FAILEDRECOVERY);
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("in recovery"));
+    }
+
+    /*
+    SECTION( "try recovery: cleared" ) {
+
+        // if explicit clearing implemented
+        // clear error message
+        auto out = std::vector< unsigned char >(12, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 12, &bytes_read);
+
+        CHECK(err == LFP_PROTOCOL_TRYRECOVERY);
+        CHECK(bytes_read == 12);
+
+        const auto expected = std::vector< unsigned char > {
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+            0x01, 0x02, 0x03, 0x04,
+        };
+        CHECK_THAT(out, Equals(expected));
+    }
+    */
+
+    lfp_close(tif);
+}
+
+TEST_CASE(
+    "Broken TIF - data missing",
+    "[tapeimage][errorcase][incomplete]") {
+
+    const auto expected = std::vector< unsigned char > {
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+        0x44, 0x41, 0x54, 0x41,
+    };
+
+    auto run = [&](std::vector< unsigned char > contents, int expected_error)
+    {
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        {
+            auto out = std::vector< unsigned char >(16, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+
+            CHECK(err == expected_error);
+            auto msg = std::string(lfp_errormsg(tif));
+            CHECK_THAT(msg, Contains("missing data"));
+
+            // TODO: possibly should return number of bytes actually read
+            // before failure happened?
+            /*
+            CHECK(bytes_read == 12);
+            auto read = std::vector< unsigned char >(
+                out.begin(),
+                std::next(out.begin(), 12)
+                );
+            CHECK_THAT(read, Equals(expected));
+            */
+        }
+
+        // in case state revert for before the operation implemented
+        /*
+        {
+            // revert-to-before-the-operation
+            auto out = std::vector< unsigned char >(12, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 12, &bytes_read);
+
+            CHECK(err == LFP_OK);
+            CHECK(bytes_read == 12);
+            CHECK_THAT(out, Equals(expected));
+        }
+        */
+        lfp_close(tif);
+    };
+
+    SECTION( "failed checks: header type and previous (> 2nd header)" ) {
+        auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x0C, 0x00, 0x00, 0x00,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x24, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+
+            /* data went missing */
+            0x44, 0x41, 0x54, 0x41,
+            0x04, 0x05, 0x06, 0x07, //perceived header
+            0x08, 0x09, 0x0A, 0x0B,
+            0x0C, 0x0D, 0x0E, 0x0F,
+
+            0x01, 0x00, 0x00, 0x00,
+            0x04, 0x67, 0x70, 0x00,
+            0x00, 0x68, 0x70, 0x00,
+        };
+
+        auto expected_error = LFP_PROTOCOL_FAILEDRECOVERY;
+        run(contents, expected_error);
+    }
+
+    SECTION( "failed checks: header type and next > prev" ) {
+        auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x18, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+
+            /* data went missing */
+            0x44, 0x41, 0x54, 0x41,
+            0x0B, 0x0A, 0x09, 0x08, //perceived header
+            0x07, 0x06, 0x05, 0x04,
+            0x03, 0x02, 0x01, 0x00,
+
+            0x01, 0x00, 0x00, 0x00,
+            0x04, 0x67, 0x70, 0x00,
+            0x00, 0x68, 0x70, 0x00,
+        };
+
+        auto expected_error = LFP_PROTOCOL_FATAL_ERROR;
+        run(contents, expected_error);
+    }
+}

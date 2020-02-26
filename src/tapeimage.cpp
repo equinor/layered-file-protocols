@@ -234,7 +234,10 @@ void tapeimage::read_header() noexcept (false) {
     std::memcpy(&head.prev, b + 1 * 4, 4);
     std::memcpy(&head.next, b + 2 * 4, 4);
 
-    if (head.type != tapeimage::record and head.type != tapeimage::file) {
+    const auto header_type_consistent = head.type == tapeimage::record or
+                                        head.type == tapeimage::file;
+
+    if (!header_type_consistent) {
         /*
          * probably recoverable *if* this is the only error - maybe someone
          * wrote the wrong record type by accident, or simply use some
@@ -249,6 +252,7 @@ void tapeimage::read_header() noexcept (false) {
             throw protocol_failed_recovery(msg);
         }
         this->recovery = LFP_PROTOCOL_TRYRECOVERY;
+        head.type = tapeimage::record;
     }
 
     if (head.next <= head.prev) {
@@ -259,8 +263,16 @@ void tapeimage::read_header() noexcept (false) {
          *
          * At least for now, consider it a non-recoverable error.
          */
-        const auto msg = "tapeimage: head.next (= {}) <= head.prev (= {})";
-        throw protocol_fatal(fmt::format(msg, head.next, head.prev));
+        if (!header_type_consistent) {
+            const auto msg = "file corrupt: header type is not 0 or 1, "
+                             "head.next (= {}) <= head.prev (= {}). "
+                             "File might be missing data";
+            throw protocol_fatal(fmt::format(msg, head.next, head.prev));
+        } else {
+            const auto msg = "file corrupt: head.next (= {}) <= head.prev "
+                             "(= {}). File size might be > 4GB";
+            throw protocol_fatal(fmt::format(msg, head.next, head.prev));
+        }
     }
 
     if (this->markers.size() >= 2) {
@@ -277,6 +289,14 @@ void tapeimage::read_header() noexcept (false) {
          */
         const auto& back2 = *std::prev(this->markers.end(), 2);
         if (head.prev != back2.next) {
+            if (this->recovery) {
+                const auto msg = "file corrupt: head.prev (= {}) != "
+                                 "prev(prev(head)).next (= {}). "
+                                 "Error happened in recovery mode. "
+                                 "File might be missing data";
+                throw protocol_failed_recovery(
+                      fmt::format(msg, head.prev, back2.next));
+            }
             this->recovery = LFP_PROTOCOL_TRYRECOVERY;
             head.prev = back2.next;
         }
