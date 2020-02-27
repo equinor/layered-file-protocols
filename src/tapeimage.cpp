@@ -95,8 +95,6 @@ lfp_status tapeimage::readinto(
         std::int64_t len,
         std::int64_t* bytes_read)
 noexcept (false) {
-    if (std::numeric_limits<std::uint32_t>::max() < len)
-        throw invalid_args("len > uint32_max");
 
     const auto n = this->readinto(dst, len);
     assert(n <= len);
@@ -234,16 +232,49 @@ void tapeimage::read_header() noexcept (false) {
     std::memcpy(&head.prev, b + 1 * 4, 4);
     std::memcpy(&head.next, b + 2 * 4, 4);
 
+    const auto header_type_consistent = head.type == tapeimage::record or
+                                        head.type == tapeimage::file;
+
+    if (!header_type_consistent) {
+        /*
+         * probably recoverable *if* this is the only error - maybe someone
+         * wrote the wrong record type by accident, or simply use some
+         * extension with more record types for semantics.
+         *
+         * If it's the only error in this record, recover by ignoring it and
+         * pretend it's a record (= 0) type.
+         */
+        if (this->recovery) {
+            const auto msg = "tapeimage: unknown head.type in recovery, "
+                             "file probably corrupt";
+            throw protocol_failed_recovery(msg);
+        }
+        this->recovery = LFP_PROTOCOL_TRYRECOVERY;
+        head.type = tapeimage::record;
+    }
+
     if (head.next <= head.prev) {
         /*
          * There's no reasonable recovery if next is smaller than prev, as it's
          * likely either the previous pointer which is broken, or this entire
          * header.
          *
+         * This will happen for over 4GB files. As we do not support them at
+         * the moment, this check should detect them and prevent further
+         * invalid state.
+         *
          * At least for now, consider it a non-recoverable error.
          */
-        const auto msg = "tapeimage: head.next (= {}) <= head.prev (= {})";
-        throw protocol_fatal(fmt::format(msg, head.next, head.prev));
+        if (!header_type_consistent) {
+            const auto msg = "file corrupt: header type is not 0 or 1, "
+                             "head.next (= {}) <= head.prev (= {}). "
+                             "File might be missing data";
+            throw protocol_fatal(fmt::format(msg, head.next, head.prev));
+        } else {
+            const auto msg = "file corrupt: head.next (= {}) <= head.prev "
+                             "(= {}). File size might be > 4GB";
+            throw protocol_fatal(fmt::format(msg, head.next, head.prev));
+        }
     }
 
     if (this->markers.size() >= 2) {
@@ -260,26 +291,41 @@ void tapeimage::read_header() noexcept (false) {
          */
         const auto& back2 = *std::prev(this->markers.end(), 2);
         if (head.prev != back2.next) {
+            if (this->recovery) {
+                const auto msg = "file corrupt: head.prev (= {}) != "
+                                 "prev(prev(head)).next (= {}). "
+                                 "Error happened in recovery mode. "
+                                 "File might be missing data";
+                throw protocol_failed_recovery(
+                      fmt::format(msg, head.prev, back2.next));
+            }
             this->recovery = LFP_PROTOCOL_TRYRECOVERY;
             head.prev = back2.next;
         }
-    }
-
-    if (head.type != tapeimage::record and head.type != tapeimage::file) {
+    } else if (this->recovery && !this->markers.empty()) {
         /*
-         * probably recoverable *if* this is the only error - maybe someone
-         * wrote the wrong record type by accident, or simply use some
-         * extension with more record types for semantics.
-         *
-         * If it's the only error in this record, recover by ignoring it and
-         * pretend it's a record (= 0) type.
+         * In this case we have just two headers (A and B)
+         * ------------------------
+         * prev|A|next  prev|B|next
+         * ------------------------
+         * B.prev should point to A.position, but we do not store it.
+         * Assumption that first header is always at position 0 doesn't hold
+         * as user should be able to open TIF file from the middle of physical
+         * file. But next still should hold:
+         * -----------------------------
+         * | A.prev <= B.prev <= A.next |
+         * ------------------------------
+         * So this is the condition we check for
          */
-        if (this->recovery) {
-            const auto msg = "tapeimage: unknown head.type in recovery, "
-                             "file probably corrupt";
-            throw protocol_failed_recovery(msg);
+        if (head.prev > markers.back().next or
+            head.prev < markers.back().prev) {
+            const auto msg = "file corrupt: second header prev (= {}) is not "
+                             "between first header prev (= {}) and "
+                             "next (= {}). Error happened in recovery mode. "
+                             "File might be missing data";
+            throw protocol_failed_recovery(fmt::format(
+                  msg, head.prev, markers.back().prev, markers.back().next));
         }
-        this->recovery = LFP_PROTOCOL_TRYRECOVERY;
     }
 
     this->append(head);
@@ -313,6 +359,11 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
 void tapeimage::seek(std::int64_t n) noexcept (false) {
     assert(not this->markers.empty());
     assert(n >= 0);
+
+    if (std::numeric_limits<std::uint32_t>::max() < n)
+        throw invalid_args("Too big seek offset. TIF protocol does not "
+                           "support files larger than 4GB");
+
     if (n < 0)
         throw invalid_args("seek offset n < 0");
 

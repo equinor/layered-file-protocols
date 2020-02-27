@@ -33,6 +33,10 @@ public:
     /** \copybrief lfp_readinto
      *
      * This must be implemented by all protocols.
+     *
+     * \param dst buffer of size `len`
+     * \param len maximum length of data to be read
+     * \param bytes_read number of bytes actually read into the buffer
      */
     virtual lfp_status readinto(
             void* dst,
