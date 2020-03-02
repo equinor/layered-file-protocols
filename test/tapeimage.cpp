@@ -290,6 +290,94 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE(
+    "Tell values are relative to the layer data",
+    "[tapeimage][tell]") {
+
+    const auto contents = std::vector< unsigned char > {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x14, 0x00, 0x00, 0x00,
+
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x28, 0x00, 0x00, 0x00,
+
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x14, 0x00, 0x00, 0x00,
+        0x34, 0x00, 0x00, 0x00,
+    };
+
+    auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+    auto* tif = lfp_tapeimage_open(mem);
+
+    SECTION( "tell on 0" ) {
+        std::int64_t tell;
+        const auto err = lfp_tell(tif, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 0);
+    }
+
+    SECTION( "tell after all data has been read" ) {
+        auto out = std::vector< unsigned char >(100, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 100, &bytes_read);
+        CHECK(bytes_read == 16);
+
+        std::int64_t tell;
+        err = lfp_tell(tif, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 16);
+    }
+
+    SECTION( "tell on header border" ) {
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(tif, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 8);
+    }
+
+    SECTION( "tell inside data" ) {
+        auto out = std::vector< unsigned char >(4, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 4, &bytes_read);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(tif, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 4);
+    }
+
+    SECTION( "tell after backwards seek" ) {
+        auto out = std::vector< unsigned char >(12, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 12, &bytes_read);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(tif, 8);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(tif, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 8);
+    }
+
+    lfp_close(tif);
+}
+
+TEST_CASE(
     "Layered tapeimage closes correctly",
     "[tapeimage][close]") {
     const auto contents = std::vector< unsigned char > {
