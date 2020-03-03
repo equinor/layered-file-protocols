@@ -162,7 +162,13 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
         if (err == LFP_OKINCOMPLETE)
             return bytes_read;
 
-        if (err == LFP_EOF)
+        if (err == LFP_EOF and this->current.remaining > 0) {
+            const auto msg = "tapeimage: unexpected EOF when reading header "
+                             "- got {} bytes";
+            throw unexpected_eof(fmt::format(msg, bytes_read));
+        }
+
+        if (err == LFP_EOF and this->current.remaining == 0)
             return bytes_read;
 
         assert(err == LFP_OK);
@@ -234,7 +240,7 @@ void tapeimage::read_header() noexcept (false) {
         {
             const auto msg = "tapeimage: unexpected EOF when reading header "
                                 "- got {} bytes";
-            throw protocol_fatal(fmt::format(msg, n));
+            throw unexpected_eof(fmt::format(msg, n));
         }
         default:
             throw not_implemented(

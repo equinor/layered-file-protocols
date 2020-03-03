@@ -189,5 +189,8 @@ error protocol_fatal(const std::string& msg) {
 error protocol_failed_recovery(const std::string& msg) {
     return error(LFP_PROTOCOL_FAILEDRECOVERY, msg);
 }
+error unexpected_eof(const std::string& msg) {
+    return error(LFP_UNEXPECTED_EOF, msg);
+}
 
 }

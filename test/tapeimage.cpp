@@ -635,6 +635,154 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "Reading truncated file return expected errors",
+    "[tapeimage]") {
+
+    SECTION( "eof mark is missing, but data could still be correctly read" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x14, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+        };
+
+        const auto expected = std::vector< unsigned char > {
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+            0xFF, 0xFF //Last two bytes are never written by lfp
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+
+        CHECK(err == LFP_UNEXPECTED_EOF);
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("unexpected EOF"));
+        CHECK_THAT(msg, Contains("got 0 bytes"));
+
+        CHECK_THAT(out, Equals(expected));
+
+        lfp_close(tif);
+    }
+
+    SECTION( "truncated in header" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x14, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            //oops
+        };
+
+        const auto expected = std::vector< unsigned char > {
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+            0xFF, 0xFF //Last two bytes are never written by lfp
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+
+        CHECK(err == LFP_UNEXPECTED_EOF);
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("unexpected EOF"));
+        CHECK_THAT(msg, Contains("got 8 bytes"));
+
+        CHECK_THAT(out, Equals(expected));
+
+        lfp_close(tif);
+    }
+
+    SECTION( "truncated in data" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x14, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+            //oops
+        };
+
+        const auto expected = std::vector< unsigned char > {
+            0x54, 0x41, 0x50, 0x45,
+            0xFF, 0xFF, 0xFF, 0xFF,
+        };
+
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+
+        CHECK(err == LFP_UNEXPECTED_EOF);
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("unexpected EOF"));
+        CHECK_THAT(msg, Contains("got 4 bytes"));
+
+        CHECK_THAT(out, Equals(expected));
+
+        lfp_close(tif);
+    }
+}
+
+TEST_CASE(
+    "head.next points outside border",
+    "[tapeimage][seek]") {
+
+    const auto contents = std::vector< unsigned char > {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x14, 0x00, 0x10, 0x00, //next points way outside borders
+
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x20, 0x00, 0x00, 0x00,
+    };
+
+    std::FILE* fp = std::tmpfile();
+    std::fwrite(contents.data(), 1, contents.size(), fp);
+    std::rewind(fp);
+
+    auto* cfile = lfp_cfile(fp);
+    auto* tif = lfp_tapeimage_open(cfile);
+
+    /*
+     * If seek still falls *inside* the inner file, TIF protocol has no
+     * chance of figuring out something is wrong. We can do some verifications
+     * for headers only, so until we read fake header, we are blind.
+     */
+    auto err = lfp_seek(tif, 100);
+    CHECK(err == LFP_OK);
+
+    auto out = std::vector< unsigned char >(1, 0xFF);
+    std::int64_t bytes_read = -1;
+    err = lfp_readinto(tif, out.data(), 1, &bytes_read);
+    CHECK(err == LFP_UNEXPECTED_EOF);
+
+    lfp_close(tif);
+}
+
+TEST_CASE(
     "Broken TIF - recovery mode",
     "[tapeimage][errorcase][incomplete]") {
     const auto contents = std::vector< unsigned char > {

@@ -155,6 +155,12 @@ enum lfp_status {
      * requested bytes.
      */
     LFP_EOF,
+
+    /**
+     * Returned when there the underlying handle reports end-of-file while an
+     * outer protocol expected there to more data.
+     */
+    LFP_UNEXPECTED_EOF,
 };
 
 /** \defgroup public-functions Functions */

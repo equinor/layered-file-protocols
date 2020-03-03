@@ -282,6 +282,7 @@ error runtime_error(const std::string& msg);
 error invalid_args(const std::string& msg);
 error protocol_fatal(const std::string& msg);
 error protocol_failed_recovery(const std::string& msg);
+error unexpected_eof(const std::string& msg);
 
 /** @} */
 
