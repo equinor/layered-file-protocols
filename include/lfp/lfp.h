@@ -208,6 +208,24 @@ int lfp_seek(lfp_protocol*, int64_t n);
 LFP_API
 int lfp_tell(lfp_protocol*, int64_t* n);
 
+/** Peels off the current protocol to expose the underlying one
+ *
+ * Conceptually this is similar to calling release() on a std::unique_ptr.
+ * `lfp_peel()` is not implemented for leaf protocols such as the cfile
+ * protocol.
+ *
+ * \param outer Outer protocol that will be peeled off
+ * \param inner Reference to the underlying protocol
+ *
+ * \retval LFP_OK Success
+ * \retval LFP_LEAF_PROTOCOL Leaf protocols does not support peel
+ * \retval LFP_IOERROR There is no underlying protocol to peel into. Typically
+ *                     this would be the case if peel is called multiple times
+ *                     on the same protocol.
+ */
+LFP_API
+int lfp_peel(lfp_protocol* outer, lfp_protocol** inner);
+
 /** Get last set error message
  *
  * Obtain a human-readable error message, or `NULL` if no error is set. This

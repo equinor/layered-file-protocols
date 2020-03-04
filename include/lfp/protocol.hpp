@@ -68,6 +68,13 @@ public:
      */
     virtual std::int64_t tell() const noexcept (false);
 
+    /** \copybrief lfp_peel
+     *
+     * If this is not implemented, `lfp_peel()` will throw
+     * `LFP_NOTIMPLEMENTED`.
+     */
+    virtual lfp_protocol* peel() noexcept (false) = 0;
+
     /** \copybrief lfp_errormsg */
     const char* errmsg() noexcept (true);
 
@@ -177,9 +184,9 @@ public:
      * Underlying pointer is not destroyed, but its fate is no longer
      * unique_lfp concern
      */
-    void release() noexcept (true) {
+    lfp_protocol* release() noexcept (true) {
         assert(this->fp);
-        this->fp.release();
+        return this->fp.release();
     }
 
     /** Conversion to `bool`

@@ -35,6 +35,8 @@ public:
     void seek(std::int64_t) noexcept (false) override;
     std::int64_t tell() const noexcept (false) override;
 
+    lfp_protocol* peel() noexcept (false) override;
+
 private:
     struct del {
         void operator () (FILE* f) noexcept (true) {
@@ -113,6 +115,10 @@ std::int64_t cfile::tell() const noexcept (false) {
     if (off == -1)
         throw io_error(std::strerror(errno));
     return off - this->zero;
+}
+
+lfp_protocol* cfile::peel() noexcept (false) {
+    throw lfp::leaf_protocol("peel: not supported for leaf protocol");
 }
 
 }
