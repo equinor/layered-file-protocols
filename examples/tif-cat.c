@@ -36,6 +36,7 @@ int main(int args, char** argv) {
         switch (err) {
             case LFP_OK:
             case LFP_OKINCOMPLETE:
+            case LFP_EOF:
                 break;
 
             default:
@@ -46,7 +47,7 @@ int main(int args, char** argv) {
 
         fwrite(buf, 1, nread, stdout);
 
-        if (err == LFP_OKINCOMPLETE) {
+        if (err == LFP_EOF) {
             lfp_close(tfile);
             return EXIT_SUCCESS;
         }

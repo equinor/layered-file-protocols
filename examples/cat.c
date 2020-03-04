@@ -39,6 +39,7 @@ int main(int args, char** argv) {
         switch (err) {
             case LFP_OK:
             case LFP_OKINCOMPLETE:
+            case LFP_EOF:
                 /*
                  * Reading was a success
                  */
@@ -64,7 +65,7 @@ int main(int args, char** argv) {
          * Incomplete read - since this is a file, not a pipe, it is
          * end-of-file, so exit
          */
-        if (err == LFP_OKINCOMPLETE) {
+        if (err == LFP_EOF) {
             lfp_close(cfile);
             return EXIT_SUCCESS;
         }

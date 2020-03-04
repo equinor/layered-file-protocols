@@ -122,7 +122,7 @@ TEST_CASE(
     const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
 
     CHECK(bytes_read == 0);
-    CHECK(err == LFP_OKINCOMPLETE);
+    CHECK(err == LFP_EOF);
     lfp_close(tif);
 }
 
@@ -163,7 +163,7 @@ TEST_CASE(
     out.resize(bytes_read);
 
     CHECK(bytes_read == 8);
-    CHECK(err == LFP_OKINCOMPLETE);
+    CHECK(err == LFP_EOF);
     CHECK_THAT(out, Equals(expected));
     lfp_close(tif);
 }
@@ -205,7 +205,7 @@ TEST_CASE_METHOD(
 
     if (size % readsize != 0) {
         const auto err = lfp_readinto(f, p, readsize, &nread);
-        CHECK(err == LFP_OKINCOMPLETE);
+        CHECK(err == LFP_EOF);
     }
 
     CHECK_THAT(out, Equals(expected));

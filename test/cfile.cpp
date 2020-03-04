@@ -79,7 +79,7 @@ TEST_CASE(
     std::int64_t nread;
     err = lfp_readinto(cfile, buffer.data(), 17, &nread);
 
-    CHECK(err == LFP_OKINCOMPLETE);
+    CHECK(err == LFP_EOF);
     CHECK(nread == 16);
 
     err = lfp_close(cfile);
@@ -104,7 +104,7 @@ TEST_CASE(
     std::int64_t nread;
     err = lfp_readinto(cfile, buffer.data(), 17, &nread);
 
-    CHECK(err == LFP_OKINCOMPLETE);
+    CHECK(err == LFP_EOF);
     CHECK(nread == 16);
 
     err = lfp_close(cfile);

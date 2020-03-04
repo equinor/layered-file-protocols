@@ -71,7 +71,7 @@ TEST_CASE_METHOD(
     std::int64_t nread = 0;
     const auto err = lfp_readinto(f, out.data(), 2*out.size(), &nread);
 
-    CHECK(err == LFP_OKINCOMPLETE);
+    CHECK(err == LFP_EOF);
     CHECK(nread == expected.size());
     CHECK_THAT(out, Equals(expected));
 }
@@ -95,7 +95,7 @@ TEST_CASE_METHOD(
 
     if (size % readsize != 0) {
         const auto err = lfp_readinto(f, p, readsize, &nread);
-        CHECK(err == LFP_OKINCOMPLETE);
+        CHECK(err == LFP_EOF);
     }
 
     CHECK_THAT(out, Equals(expected));

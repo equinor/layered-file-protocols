@@ -74,10 +74,13 @@ noexcept (false) {
     if (bytes_read)
         *bytes_read = n;
 
-    if (n < std::size_t(len))
-        return LFP_OKINCOMPLETE;
+    if (n == std::size_t(len))
+        return LFP_OK;
 
-    return LFP_OK;
+    if (this->eof())
+        return LFP_EOF;
+    else
+        return LFP_OKINCOMPLETE;
 }
 
 int cfile::eof() const noexcept (false) {

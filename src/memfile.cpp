@@ -59,10 +59,13 @@ noexcept (true) {
     if (nread)
         *nread = n;
 
-    if (n < len)
-        return LFP_OKINCOMPLETE;
+    if (n == len)
+        return LFP_OK;
 
-    return LFP_OK;
+    if (this->eof())
+        return LFP_EOF;
+    else
+        return LFP_OKINCOMPLETE;
 }
 
 int memfile::eof() const noexcept (true) {
