@@ -378,6 +378,60 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "Seeks are performed relative to layer",
+    "[tapeimage][seek]") {
+
+    const auto contents = std::vector< unsigned char > {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x14, 0x00, 0x00, 0x00,
+
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x28, 0x00, 0x00, 0x00,
+
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x14, 0x00, 0x00, 0x00,
+        0x34, 0x00, 0x00, 0x00,
+    };
+
+    auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+    auto* tif = lfp_tapeimage_open(mem);
+
+    SECTION( "negative seek" ) {
+        const auto err = lfp_seek(tif, -1);
+        CHECK(err == LFP_INVALID_ARGS);
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("< 0"));
+    }
+
+    SECTION( "seek outside data borders" ) {
+        const auto err = lfp_seek(tif, 16);
+        CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("beyond end"));
+    }
+
+    SECTION( "seek to header border" ) {
+        auto err = lfp_seek(tif, 8);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(tif, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 8);
+    }
+
+    lfp_close(tif);
+}
+
+TEST_CASE(
     "Layered tapeimage closes correctly",
     "[tapeimage][close]") {
     const auto contents = std::vector< unsigned char > {

@@ -398,7 +398,8 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 
         if (head.type == tapeimage::file) {
             throw protocol_fatal(
-                "tapeimage: segment type is file, expected record"
+                "file header encountered. "
+                "Seek position is beyond end of the file."
             );
         }
 
