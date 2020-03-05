@@ -164,6 +164,7 @@ TEST_CASE(
 
     CHECK(bytes_read == 8);
     CHECK(err == LFP_EOF);
+    CHECK(lfp_eof(tif));
     CHECK_THAT(out, Equals(expected));
     lfp_close(tif);
 }
@@ -179,6 +180,7 @@ TEST_CASE_METHOD(
     const auto err = lfp_readinto(f, out.data(), out.size(), &nread);
 
     CHECK(err == LFP_OK);
+    CHECK(!lfp_eof(f));
     CHECK(nread == expected.size());
     CHECK_THAT(out, Equals(expected));
 }

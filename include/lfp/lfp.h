@@ -257,6 +257,16 @@ int lfp_peel(lfp_protocol* outer, lfp_protocol** inner);
 LFP_API
 int lfp_peek(lfp_protocol* outer, lfp_protocol** inner);
 
+/** Checks if the end of file is reached
+ *
+ * This does not return a `lfp_status` code.
+ *
+ * \retval non-zero End-of-file reached
+ * \retval 0 End-of-file not reached
+ */
+LFP_API
+int lfp_eof(lfp_protocol*) noexcept(true);
+
 /** Get last set error message
  *
  * Obtain a human-readable error message, or `NULL` if no error is set. This
