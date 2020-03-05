@@ -85,3 +85,28 @@ TEST_CASE(
     err = lfp_close(cfile);
     CHECK(err == LFP_OK);
 }
+
+TEST_CASE(
+    "Unsupported peek leaves the protocol intact",
+    "[cfile][peek]") {
+    std::FILE* fp = std::tmpfile();
+    std::fputs("Very simple file" , fp);
+    std::rewind(fp);
+
+    auto* cfile = lfp_cfile(fp);
+
+    lfp_protocol* protocol;
+    auto err = lfp_peek(cfile, &protocol);
+
+    CHECK(err == LFP_LEAF_PROTOCOL);
+
+    auto buffer = std::vector< unsigned char >(17, 0xFF);
+    std::int64_t nread;
+    err = lfp_readinto(cfile, buffer.data(), 17, &nread);
+
+    CHECK(err == LFP_OKINCOMPLETE);
+    CHECK(nread == 16);
+
+    err = lfp_close(cfile);
+    CHECK(err == LFP_OK);
+}

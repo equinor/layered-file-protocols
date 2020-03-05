@@ -387,6 +387,67 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "Peek into the underlying protocol"
+    "[tapeimage][peek]") {
+
+    const auto file = std::vector< unsigned char > {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x14, 0x00, 0x00, 0x00,
+
+        /* begin body */
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        /* end body */
+
+        0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x20, 0x00, 0x00, 0x00,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x14, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00,
+    };
+
+    const auto expected1 = std::vector< unsigned char > {
+        0x01, 0x02, 0x03, 0x04,
+    };
+
+    const auto expected2 = std::vector< unsigned char > {
+        0x05, 0x06, 0x07, 0x08,
+    };
+
+    auto* mem = lfp_memfile_openwith(file.data(), file.size());
+    auto* tif = lfp_tapeimage_open(mem);
+
+    auto out = std::vector< unsigned char >(4, 0xFF);
+    std::int64_t bytes_read = -1;
+    auto err = lfp_readinto(tif, out.data(), 4, &bytes_read);
+
+    CHECK(bytes_read == 4);
+    CHECK(err == LFP_OK);
+    CHECK_THAT(out, Equals(expected1));
+
+    std::int64_t tif_tell;
+    lfp_tell(tif, &tif_tell);
+    CHECK(tif_tell == 4);
+
+    lfp_protocol* inner;
+    lfp_peek(tif, &inner);
+
+    std::int64_t mem_tell;
+    lfp_tell(inner, &mem_tell);
+    CHECK(mem_tell == 16);
+
+    err = lfp_readinto(tif, out.data(), 4, &bytes_read);
+    CHECK(bytes_read == 4);
+    CHECK(err == LFP_OK);
+    CHECK_THAT(out, Equals(expected2));
+
+    lfp_close(tif);
+}
+
+TEST_CASE(
     "Error in tapeimage constructor doesn't destroy underlying file",
     "[tapeimage][open]") {
 
@@ -411,6 +472,7 @@ TEST_CASE(
 
         int eof() const noexcept(true) override { return 0; }
         lfp_protocol* peel() noexcept (false) override { throw; }
+        lfp_protocol* peek() const noexcept (false) override { throw; }
 
       private:
         int *livepointer;
@@ -734,6 +796,7 @@ TEST_CASE(
             return;
         }
         lfp_protocol* peel() noexcept (false) override { throw; }
+        lfp_protocol* peek() const noexcept (false) override { throw; }
 
       private:
         std::vector< header > headers;

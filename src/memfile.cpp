@@ -37,6 +37,7 @@ public:
     std::int64_t tell() const noexcept (true) override;
 
     lfp_protocol* peel() noexcept (false) override;
+    lfp_protocol* peek() const noexcept (false) override;
 
 private:
     std::vector< unsigned char > mem;
@@ -86,6 +87,10 @@ std::int64_t memfile::tell() const noexcept (true) {
 
 lfp_protocol* memfile::peel() noexcept (false) {
     throw lfp::leaf_protocol("peel: not supported for leaf protocol");
+}
+
+lfp_protocol* memfile::peek() const noexcept (false) {
+    throw lfp::leaf_protocol("peek: not supported for leaf protocol");
 }
 
 }

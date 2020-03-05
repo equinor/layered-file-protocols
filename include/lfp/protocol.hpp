@@ -75,6 +75,13 @@ public:
      */
     virtual lfp_protocol* peel() noexcept (false) = 0;
 
+    /** \copybrief lfp_peek
+     *
+     * If this is not implemented, `lfp_peek()` will throw
+     * `LFP_NOTIMPLEMENTED`.
+     */
+    virtual lfp_protocol* peek() const noexcept (false) = 0;
+
     /** \copybrief lfp_errormsg */
     const char* errmsg() noexcept (true);
 
@@ -187,6 +194,16 @@ public:
     lfp_protocol* release() noexcept (true) {
         assert(this->fp);
         return this->fp.release();
+    }
+
+    /** Return a pointer to the owned object
+     *
+     * The ownership is *not* released.
+     *
+     */
+    lfp_protocol* get() const noexcept (true) {
+        assert(this->fp);
+        return this->fp.get();
     }
 
     /** Conversion to `bool`

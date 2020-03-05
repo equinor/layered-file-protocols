@@ -226,6 +226,28 @@ int lfp_tell(lfp_protocol*, int64_t* n);
 LFP_API
 int lfp_peel(lfp_protocol* outer, lfp_protocol** inner);
 
+/** Expose a const view of the underlying protocol
+ *
+ * Conceptually, this function is similar to calling get() on a
+ * std::unique_ptr. Performing a non-const operation such as `lfp_seek()` and
+ * `lfp_readinto()` on the exposed protocol *will* leave the outer protocol in
+ * an undefined state.
+
+ * Like `lfp_peel()`, peek is not implemented for leaf protocols such as the
+ * cfile protocol.
+ *
+ * \param outer Outer protocol
+ * \param inner Reference to the underlying protocol
+ *
+ * \retval LFP_OK Success
+ * \retval LFP_LEAF_PROTOCOL Leaf protocols does not support peek
+ * \retval LFP_IOERROR There is no underlying protocol to peek into. Typically
+ *                     this would be the case if the protocol is already been
+ *                     peel'ed.
+ */
+LFP_API
+int lfp_peek(lfp_protocol* outer, lfp_protocol** inner);
+
 /** Get last set error message
  *
  * Obtain a human-readable error message, or `NULL` if no error is set. This

@@ -36,6 +36,7 @@ public:
     std::int64_t tell() const noexcept (false) override;
 
     lfp_protocol* peel() noexcept (false) override;
+    lfp_protocol* peek() const noexcept (false) override;
 
 private:
     struct del {
@@ -119,6 +120,10 @@ std::int64_t cfile::tell() const noexcept (false) {
 
 lfp_protocol* cfile::peel() noexcept (false) {
     throw lfp::leaf_protocol("peel: not supported for leaf protocol");
+}
+
+lfp_protocol* cfile::peek() const noexcept (false) {
+    throw lfp::leaf_protocol("peek: not supported for leaf protocol");
 }
 
 }

@@ -28,6 +28,7 @@ public:
     void seek(std::int64_t)   noexcept (false) override;
     std::int64_t tell() const noexcept (false) override;
     lfp_protocol* peel() noexcept (false) override;
+    lfp_protocol* peek() const noexcept (false) override;
 
 private:
     static constexpr const std::uint32_t record = 0;
@@ -94,6 +95,11 @@ void tapeimage::close() noexcept (false) {
 lfp_protocol* tapeimage::peel() noexcept (false) {
     assert(this->fp);
     return this->fp.release();
+}
+
+lfp_protocol* tapeimage::peek() const noexcept (false) {
+    assert(this->fp);
+    return this->fp.get();
 }
 
 lfp_status tapeimage::readinto(
