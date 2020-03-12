@@ -251,6 +251,7 @@ private:
  */
 
 error not_implemented(const std::string& msg);
+error leaf_protocol(const std::string& msg);
 error not_supported(const std::string& msg);
 error io_error(const std::string& msg);
 error runtime_error(const std::string& msg);

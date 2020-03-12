@@ -123,6 +123,9 @@ lfp_status error::status() const noexcept (true) {
 error not_implemented(const std::string& msg) {
     return error(LFP_NOTIMPLEMENTED, msg);
 }
+error leaf_protocol(const std::string& msg) {
+    return error(LFP_LEAF_PROTOCOL, msg);
+}
 error not_supported(const std::string& msg) {
     return error(LFP_NOTSUPPORTED, msg);
 }
