@@ -87,6 +87,12 @@ enum lfp_status {
 
     /**
      * The functionality is implemented and supported in general, but not
+     * supported for leaf protocols.
+     */
+    LFP_LEAF_PROTOCOL,
+
+    /**
+     * The functionality is implemented and supported in general, but not
      * supported for a specific configuration for this handle. An example is
      * `lfp_seek()` or `lfp_tell()` in an unseekable `lfp_cfile` stream (pipe).
      */
