@@ -761,7 +761,93 @@ TEST_CASE(
     std::int64_t bytes_read = -1;
     err = lfp_readinto(tif, out.data(), 1, &bytes_read);
     CHECK(err == LFP_UNEXPECTED_EOF);
+}
 
+TEST_CASE(
+    "Tapeimage can be opened at any TM"
+    "[tapeimage][offset]") {
+
+    const auto file = std::vector< unsigned char > {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x1C, 0x00, 0x00, 0x00,
+
+        /* begin body */
+        0x01, 0x02, 0x03, 0x04,
+        /* end body */
+
+        0x00, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00,
+
+        /* begin body */
+        0x05, 0x06, 0x07, 0x08,
+        /* end body */
+
+        0x01, 0x00, 0x00, 0x00,
+        0x1C, 0x00, 0x00, 0x00,
+        0x38, 0x00, 0x00, 0x00,
+    };
+
+    const auto expected = std::vector< unsigned char > {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+    };
+
+    auto* mem = lfp_memfile_openwith(file.data(), file.size());
+
+    auto err = lfp_seek(mem, 12);
+    CHECK(err == LFP_OK);
+
+    auto* tif = lfp_tapeimage_open(mem);
+
+    SECTION( "Tell starts at 0" ) {
+        std::int64_t tell;
+        lfp_tell(tif, &tell);
+        CHECK(tell == 0);
+    }
+    SECTION( "Seek past index" ) {
+        err = lfp_seek(tif, 6);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        lfp_tell(tif, &tell);
+        CHECK(tell == 6);
+    }
+    SECTION( "Seek with index" ) {
+        err = lfp_seek(tif, 2);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        lfp_tell(tif, &tell);
+        CHECK(tell == 2);
+    }
+    SECTION( "Read from already indexed records" ) {
+        err = lfp_seek(tif, 6);
+        CHECK(err == LFP_OK);
+        err = lfp_seek(tif, 0);
+        CHECK(err == LFP_OK);
+
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        std::int64_t bytes_read = -1;
+        err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+
+        CHECK(bytes_read == 8);
+        CHECK(err == LFP_OK);
+        CHECK_THAT(out, Equals(expected));
+    }
+    SECTION( "Read past index" ) {
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        std::int64_t bytes_read = -1;
+        err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+
+        CHECK(bytes_read == 8);
+        CHECK(err == LFP_OK);
+        CHECK_THAT(out, Equals(expected));
+    }
     lfp_close(tif);
 }
 

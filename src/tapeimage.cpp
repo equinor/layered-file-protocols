@@ -34,6 +34,7 @@ private:
     static constexpr const std::uint32_t record = 0;
     static constexpr const std::uint32_t file   = 1;
 
+    std::int64_t zero;
     struct header {
         std::uint32_t type;
         std::uint32_t prev;
@@ -80,8 +81,14 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
      * to interrogate the underlying handle more thoroughly.
      */
     try {
+        this->zero = this->fp->tell();
+    } catch (const lfp::error&) {
+        this->zero = 0;
+    }
+
+    try {
         this->read_header();
-    } catch (const lfp::error& e) {
+    } catch (...) {
         this->fp.release();
         throw;
     }
@@ -357,7 +364,7 @@ void tapeimage::read_header() noexcept (false) {
 
     this->append(head);
     const auto tell = this->markers.size() == 1
-                    ? header::size
+                    ? header::size + this->zero
                     : this->current->next + header::size;
 
     this->current = std::prev(this->markers.end());
@@ -365,7 +372,7 @@ void tapeimage::read_header() noexcept (false) {
 }
 
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
-    decltype(this->current.remaining) base = 0;
+    decltype(this->current.remaining) base = this->zero;
     auto end = std::find_if(this->markers.begin(), this->markers.end(),
         [&base, n](const header& head) noexcept (true) {
             base += 12;
@@ -377,7 +384,7 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
     assert(end < this->markers.end());
 
     const auto preceeding = 1 + std::distance(this->markers.begin(), end);
-    const auto real_offset = n + (preceeding * header::size);
+    const auto real_offset = n + (preceeding * header::size) + this->zero;
     this->fp->seek(real_offset);
     this->current = end;
     this->current.remaining = end->next - real_offset;
@@ -406,7 +413,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     this->current = std::prev(this->markers.end());
     while (true) {
         const auto& head = this->markers.back();
-        if (head.next > n + preceeding * header::size) {
+        if (head.next > n + preceeding * header::size + this->zero) {
             // TODO: maybe reposition directly *or* refactor out proper
             return this->seek(n);
         }
@@ -433,13 +440,13 @@ std::int64_t tapeimage::tell() const noexcept (false) {
     const auto preceeding = std::distance(begin, end);
     assert(preceeding >= 0);
 
-    return real_offset - preceeding*header::size;
+    return real_offset - preceeding*header::size - this->zero;
 }
 
 bool tapeimage::is_indexed(std::int64_t n) const noexcept (true) {
     const auto last = this->markers.back().next;
     const auto header_contrib = this->markers.size() * header::size;
-    return last > n + header_contrib;
+    return last > n + header_contrib + this->zero;
 }
 
 void tapeimage::append(const header& head) noexcept (false) try {
