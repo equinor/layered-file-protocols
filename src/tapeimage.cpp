@@ -376,9 +376,6 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         throw invalid_args("Too big seek offset. TIF protocol does not "
                            "support files larger than 4GB");
 
-    if (n < 0)
-        throw invalid_args("seek offset n < 0");
-
     /*
      * Have we already index'd the right section? If so, use it and seek there.
      */

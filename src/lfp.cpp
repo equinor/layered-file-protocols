@@ -48,6 +48,12 @@ int lfp_readinto(lfp_protocol* f,
 
 int lfp_seek(lfp_protocol* f, std::int64_t n) try {
     assert(f);
+
+    if (n < 0) {
+        f->errmsg(fmt::format("seek offset n < 0. Must be >= 0, was {}", n));
+        return LFP_INVALID_ARGS;
+    }
+
     f->seek(n);
     return LFP_OK;
 } catch (const lfp::error& e) {

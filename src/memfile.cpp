@@ -70,9 +70,7 @@ int memfile::eof() const noexcept (true) {
 }
 
 void memfile::seek(std::int64_t n) noexcept (false) {
-    if (n < 0)
-        throw invalid_args("memfile: seek offset n < 0");
-
+    assert(n >= 0);
     if (std::size_t(n) >= this->mem.size()) {
         const auto msg = "memfile: seek: offset (= {}) >= file size (= {})";
         throw invalid_args(fmt::format(msg, n, this->mem.size()));
