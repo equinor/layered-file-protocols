@@ -68,6 +68,20 @@ public:
      */
     virtual std::int64_t tell() const noexcept (false);
 
+    /** \copybrief lfp_peel
+     *
+     * If this is not implemented, `lfp_peel()` will throw
+     * `LFP_NOTIMPLEMENTED`.
+     */
+    virtual lfp_protocol* peel() noexcept (false) = 0;
+
+    /** \copybrief lfp_peek
+     *
+     * If this is not implemented, `lfp_peek()` will throw
+     * `LFP_NOTIMPLEMENTED`.
+     */
+    virtual lfp_protocol* peek() const noexcept (false) = 0;
+
     /** \copybrief lfp_errormsg */
     const char* errmsg() noexcept (true);
 
@@ -177,9 +191,19 @@ public:
      * Underlying pointer is not destroyed, but its fate is no longer
      * unique_lfp concern
      */
-    void release() noexcept (true) {
+    lfp_protocol* release() noexcept (true) {
         assert(this->fp);
-        this->fp.release();
+        return this->fp.release();
+    }
+
+    /** Return a pointer to the owned object
+     *
+     * The ownership is *not* released.
+     *
+     */
+    lfp_protocol* get() const noexcept (true) {
+        assert(this->fp);
+        return this->fp.get();
     }
 
     /** Conversion to `bool`
@@ -251,6 +275,7 @@ private:
  */
 
 error not_implemented(const std::string& msg);
+error leaf_protocol(const std::string& msg);
 error not_supported(const std::string& msg);
 error io_error(const std::string& msg);
 error runtime_error(const std::string& msg);

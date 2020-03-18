@@ -87,6 +87,12 @@ enum lfp_status {
 
     /**
      * The functionality is implemented and supported in general, but not
+     * supported for leaf protocols.
+     */
+    LFP_LEAF_PROTOCOL,
+
+    /**
+     * The functionality is implemented and supported in general, but not
      * supported for a specific configuration for this handle. An example is
      * `lfp_seek()` or `lfp_tell()` in an unseekable `lfp_cfile` stream (pipe).
      */
@@ -201,6 +207,46 @@ int lfp_seek(lfp_protocol*, int64_t n);
  */
 LFP_API
 int lfp_tell(lfp_protocol*, int64_t* n);
+
+/** Peels off the current protocol to expose the underlying one
+ *
+ * Conceptually this is similar to calling release() on a std::unique_ptr.
+ * `lfp_peel()` is not implemented for leaf protocols such as the cfile
+ * protocol.
+ *
+ * \param outer Outer protocol that will be peeled off
+ * \param inner Reference to the underlying protocol
+ *
+ * \retval LFP_OK Success
+ * \retval LFP_LEAF_PROTOCOL Leaf protocols does not support peel
+ * \retval LFP_IOERROR There is no underlying protocol to peel into. Typically
+ *                     this would be the case if peel is called multiple times
+ *                     on the same protocol.
+ */
+LFP_API
+int lfp_peel(lfp_protocol* outer, lfp_protocol** inner);
+
+/** Expose a const view of the underlying protocol
+ *
+ * Conceptually, this function is similar to calling get() on a
+ * std::unique_ptr. Performing a non-const operation such as `lfp_seek()` and
+ * `lfp_readinto()` on the exposed protocol *will* leave the outer protocol in
+ * an undefined state.
+
+ * Like `lfp_peel()`, peek is not implemented for leaf protocols such as the
+ * cfile protocol.
+ *
+ * \param outer Outer protocol
+ * \param inner Reference to the underlying protocol
+ *
+ * \retval LFP_OK Success
+ * \retval LFP_LEAF_PROTOCOL Leaf protocols does not support peek
+ * \retval LFP_IOERROR There is no underlying protocol to peek into. Typically
+ *                     this would be the case if the protocol is already been
+ *                     peel'ed.
+ */
+LFP_API
+int lfp_peek(lfp_protocol* outer, lfp_protocol** inner);
 
 /** Get last set error message
  *

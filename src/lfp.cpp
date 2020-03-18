@@ -79,6 +79,40 @@ int lfp_tell(lfp_protocol* f, std::int64_t* n) try {
     return LFP_UNHANDLED_EXCEPTION;
 }
 
+int lfp_peel(lfp_protocol* outer, lfp_protocol** inner) try {
+    assert(outer);
+    assert(inner);
+
+    auto* tmp = outer->peel();
+    if (!tmp) {
+        outer->errmsg("peel: no underlying protocol");
+        return LFP_IOERROR;
+    }
+
+    *inner = tmp;
+    return LFP_OK;
+} catch(const lfp::error& e) {
+    outer->errmsg(e.what());
+    return e.status();
+}
+
+int lfp_peek(lfp_protocol* outer, lfp_protocol** inner) try {
+    assert(outer);
+    assert(inner);
+
+    auto* tmp = outer->peek();
+    if (!tmp) {
+        outer->errmsg("peek: no underlying protocol");
+        return LFP_IOERROR;
+    }
+
+    *inner = tmp;
+    return LFP_OK;
+} catch(const lfp::error& e) {
+    outer->errmsg(e.what());
+    return e.status();
+}
+
 const char* lfp_errormsg(lfp_protocol* f) try {
     assert(f);
     return f->errmsg();
@@ -122,6 +156,9 @@ lfp_status error::status() const noexcept (true) {
 
 error not_implemented(const std::string& msg) {
     return error(LFP_NOTIMPLEMENTED, msg);
+}
+error leaf_protocol(const std::string& msg) {
+    return error(LFP_LEAF_PROTOCOL, msg);
 }
 error not_supported(const std::string& msg) {
     return error(LFP_NOTSUPPORTED, msg);
