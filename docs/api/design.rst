@@ -11,6 +11,33 @@ Namespacing
 In good C fashion, all symbols are prefixed with `lfp_` or `LFP_`, to avoid
 collision with other symbols.
 
+Layers visualization
+--------------------
+Assume file is layered like that:
+::
+
+    Outer layer
+         -------        -------
+        | data1 |      | data2 |
+         -------        -------
+        0  1  2  _____ 3  4  5  6
+
+    Inner layer
+      ----------------------------
+     |  | data1 |      | data2 |  |
+      ----------------------------
+     0  1  2  3  4  5  6  7  8  9  10
+
+*Inner layer* has 10 bytes. Actual data is present in bytes *[1, 4)* and 
+*[6, 9)*. *Outer layer* perceives itself to have just 6 bytes *[0, 6)*.
+
+Operations on newly created **outer layer** handle would mean:
+
+- **read** 6 bytes: *data1* and *data2* will be read into buffer
+    (**tell** after operation would reply: I am at position 6)
+- **seek** to 3: file position will be at the beginning of *data2*
+    (**tell** after operation would reply: I am at position 3)
+
 Function signatures
 -------------------
 All functions are structured similarly - the file handle is the first
