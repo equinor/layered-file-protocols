@@ -329,6 +329,7 @@ TEST_CASE(
         auto out = std::vector< unsigned char >(100, 0xFF);
         std::int64_t bytes_read = -1;
         auto err = lfp_readinto(tif, out.data(), 100, &bytes_read);
+        CHECK(err == LFP_EOF);
         CHECK(bytes_read == 16);
 
         std::int64_t tell;
