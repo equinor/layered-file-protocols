@@ -117,10 +117,14 @@ noexcept (false) {
     if (this->recovery)
         return this->recovery;
 
-    if (n < len)
-        return LFP_OKINCOMPLETE;
+    if (n == len)
+        return LFP_OK;
 
-    return LFP_OK;
+    if (this->eof())
+        return LFP_EOF;
+
+    else
+        return LFP_OKINCOMPLETE;
 }
 
 std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
@@ -149,12 +153,22 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
         const auto to_read = std::min(len, this->current.remaining);
         const auto err = this->fp->readinto(dst, to_read, &n);
         assert(err == LFP_OKINCOMPLETE ? (n < to_read) : true);
+        assert(err == LFP_EOF ? (n < to_read) : true);
 
         this->current.remaining -= n;
         bytes_read += n;
         dst = advance(dst, n);
 
         if (err == LFP_OKINCOMPLETE)
+            return bytes_read;
+
+        if (err == LFP_EOF and this->current.remaining > 0) {
+            const auto msg = "tapeimage: unexpected EOF when reading header "
+                             "- got {} bytes";
+            throw unexpected_eof(fmt::format(msg, bytes_read));
+        }
+
+        if (err == LFP_EOF and this->current.remaining == 0)
             return bytes_read;
 
         assert(err == LFP_OK);
@@ -213,11 +227,6 @@ void tapeimage::read_header() noexcept (false) {
         case LFP_OK: break;
 
         case LFP_OKINCOMPLETE:
-            if (this->fp->eof()) {
-                const auto msg = "tapeimage: unexpected EOF when reading header "
-                                 "- got {} bytes";
-                throw protocol_fatal(fmt::format(msg, n));
-            }
             /* For now, don't try to recover from this - if it is because the
              * read was paused (stream blocked, for example) then it can be
              * recovered from later
@@ -227,6 +236,12 @@ void tapeimage::read_header() noexcept (false) {
                 "recovery not implemented"
             );
 
+        case LFP_EOF:
+        {
+            const auto msg = "tapeimage: unexpected EOF when reading header "
+                                "- got {} bytes";
+            throw unexpected_eof(fmt::format(msg, n));
+        }
         default:
             throw not_implemented(
                 "tapeimage: unhandled error code in read_header"

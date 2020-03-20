@@ -75,8 +75,9 @@ enum lfp_status {
     LFP_OK = 0,
 
     /**
-     * Returned in successful-but-incomplete scenarions, for example by
-     * `lfp_readinto()` when not enough bytes are available in the file.
+     * Returned in successful-but-incomplete scenarios, for example by
+     * `lfp_readinto()` when the underlying IO is blocked from providing more
+     * bytes. For end-of-file, see LFP_EOF.
      */
     LFP_OKINCOMPLETE,
 
@@ -147,6 +148,19 @@ enum lfp_status {
      * When more protocol recovery was happening, but more errors occured.
      */
     LFP_PROTOCOL_FAILEDRECOVERY,
+
+    /**
+     * Returned in successful-but-incomplete scenarios, for example by
+     * `lfp_readinto()` when the end of file is reached before reading all
+     * requested bytes.
+     */
+    LFP_EOF,
+
+    /**
+     * Returned when there the underlying handle reports end-of-file while an
+     * outer protocol expected there to more data.
+     */
+    LFP_UNEXPECTED_EOF,
 };
 
 /** \defgroup public-functions Functions */
@@ -182,6 +196,7 @@ int lfp_close(lfp_protocol*);
  *
  * \retval LFP_OK Success
  * \retval LFP_OKINCOMPLETE Successful, but incomplete read
+ * \retval LFP_EOF Successful, but end of file was reach during the read
  */
 LFP_API
 int lfp_readinto(lfp_protocol*, void* dst, int64_t len, int64_t* nread);
@@ -247,6 +262,16 @@ int lfp_peel(lfp_protocol* outer, lfp_protocol** inner);
  */
 LFP_API
 int lfp_peek(lfp_protocol* outer, lfp_protocol** inner);
+
+/** Checks if the end of file is reached
+ *
+ * This does not return a `lfp_status` code.
+ *
+ * \retval non-zero End-of-file reached
+ * \retval 0 End-of-file not reached
+ */
+LFP_API
+int lfp_eof(lfp_protocol*) noexcept(true);
 
 /** Get last set error message
  *

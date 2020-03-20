@@ -36,7 +36,15 @@ int main(int args, char** argv) {
         switch (err) {
             case LFP_OK:
             case LFP_OKINCOMPLETE:
+            case LFP_EOF:
                 break;
+
+            case LFP_UNEXPECTED_EOF:
+                /*
+                 * Read all available data, but the protocol expected there to
+                 * be more data than it was.
+                 */
+                perror(lfp_errormsg(tfile));
 
             default:
                 perror(lfp_errormsg(tfile));
@@ -46,7 +54,7 @@ int main(int args, char** argv) {
 
         fwrite(buf, 1, nread, stdout);
 
-        if (err == LFP_OKINCOMPLETE) {
+        if (err == LFP_EOF) {
             lfp_close(tfile);
             return EXIT_SUCCESS;
         }

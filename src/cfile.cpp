@@ -74,10 +74,13 @@ noexcept (false) {
     if (bytes_read)
         *bytes_read = n;
 
-    if (n < std::size_t(len))
-        return LFP_OKINCOMPLETE;
+    if (n == std::size_t(len))
+        return LFP_OK;
 
-    return LFP_OK;
+    if (this->eof())
+        return LFP_EOF;
+    else
+        return LFP_OKINCOMPLETE;
 }
 
 int cfile::eof() const noexcept (false) {
@@ -99,7 +102,7 @@ void cfile::seek(std::int64_t n) noexcept (false) {
         throw not_supported(this->ftell_errmsg);
 
     const auto pos = n + this->zero;
-    assert(pos > 0);
+    assert(pos >= 0);
     // TODO: handle fseek failure when pos > limits< long >::max()
     // e.g. by converting to relative seeks
     assert(pos < std::numeric_limits< long >::max());

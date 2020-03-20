@@ -21,9 +21,9 @@ int lfp_close(lfp_protocol* f) try {
 }
 
 int lfp_readinto(lfp_protocol* f,
-                 void* dst,
-                 std::int64_t len,
-                 std::int64_t* nread) try {
+        void* dst,
+        std::int64_t len,
+        std::int64_t* nread) try {
     assert(dst);
     assert(f);
     assert(len > 0);
@@ -119,6 +119,11 @@ int lfp_peek(lfp_protocol* outer, lfp_protocol** inner) try {
     return e.status();
 }
 
+int lfp_eof(lfp_protocol* f) noexcept (true) {
+    assert(f);
+    return f->eof();
+}
+
 const char* lfp_errormsg(lfp_protocol* f) try {
     assert(f);
     return f->errmsg();
@@ -183,6 +188,9 @@ error protocol_fatal(const std::string& msg) {
 }
 error protocol_failed_recovery(const std::string& msg) {
     return error(LFP_PROTOCOL_FAILEDRECOVERY, msg);
+}
+error unexpected_eof(const std::string& msg) {
+    return error(LFP_UNEXPECTED_EOF, msg);
 }
 
 }
