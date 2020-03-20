@@ -271,7 +271,7 @@ int lfp_peek(lfp_protocol* outer, lfp_protocol** inner);
  * \retval 0 End-of-file not reached
  */
 LFP_API
-int lfp_eof(lfp_protocol*) noexcept(true);
+int lfp_eof(lfp_protocol*);
 
 /** Get last set error message
  *
