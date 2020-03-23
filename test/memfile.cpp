@@ -66,6 +66,16 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
         random_memfile,
+        "Reading 0 bytes is allowed",
+        "[mem]") {
+    std::int64_t nread = 0;
+    const auto err = lfp_readinto(f, out.data(), 0, &nread);
+    CHECK(err == LFP_OK);
+    CHECK(nread == 0);
+}
+
+TEST_CASE_METHOD(
+        random_memfile,
         "Asking more data than available stops at EOF",
         "[mem]") {
     std::int64_t nread = 0;
