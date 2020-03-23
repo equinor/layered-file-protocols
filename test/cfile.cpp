@@ -8,6 +8,26 @@
 
 using namespace Catch::Matchers;
 
+namespace {
+
+struct random_cfile : random_memfile {
+    random_cfile() {
+        REQUIRE(not expected.empty());
+
+        std::FILE* fp = std::tmpfile();
+        std::fwrite(expected.data(), 1, expected.size(), fp);
+        std::rewind(fp);
+
+        lfp_close(f);
+        f = nullptr;
+
+        f = lfp_cfile(fp);
+        REQUIRE(f);
+    }
+};
+
+}
+
 TEST_CASE(
     "File closes correctly",
     "[cfile][close]") {
@@ -109,4 +129,71 @@ TEST_CASE(
 
     err = lfp_close(cfile);
     CHECK(err == LFP_OK);
+}
+
+TEST_CASE_METHOD(
+    random_cfile,
+    "Cfile can be read",
+    "[cfile][read]") {
+
+    SECTION( "full read" ) {
+        std::int64_t nread = -1;
+        const auto err = lfp_readinto(f, out.data(), out.size(), &nread);
+
+        CHECK(err == LFP_OK);
+        CHECK(nread == expected.size());
+        CHECK_THAT(out, Equals(expected));
+    }
+
+    SECTION( "incomplete read" ) {
+        std::int64_t nread = -1;
+        const auto err = lfp_readinto(f, out.data(), 2*out.size(), &nread);
+
+        CHECK(err == LFP_EOF);
+        CHECK(nread == expected.size());
+        CHECK_THAT(out, Equals(expected));
+    }
+
+    SECTION( "A file can be read in multiple, smaller reads" ) {
+        test_split_read(this);
+    }
+
+    SECTION( "negative read" ) {
+        std::int64_t nread = -1;
+        const auto err = lfp_readinto(f, out.data(), -1, &nread);
+
+        CHECK(err == LFP_INVALID_ARGS);
+        auto msg = std::string(lfp_errormsg(f));
+        CHECK_THAT(msg, Contains(">= 0"));
+    }
+
+    SECTION( "zero read" ) {
+        std::int64_t nread = -1;
+        const auto err = lfp_readinto(f, out.data(), 0, &nread);
+
+        CHECK(err == LFP_OK);
+        CHECK(nread == 0);
+    }
+}
+
+TEST_CASE_METHOD(
+    random_cfile,
+    "Cfile can be seeked",
+    "[cfile][seek]") {
+
+    SECTION( "correct seek" ) {
+        test_random_seek(this);
+    }
+
+    SECTION( "seek beyond file end" ) {
+        // untested. behavior is determined by the handle
+    }
+
+    SECTION( "negative seek" ) {
+        const auto err = lfp_seek(f, -1);
+
+        CHECK(err == LFP_INVALID_ARGS);
+        auto msg = std::string(lfp_errormsg(f));
+        CHECK_THAT(msg, Contains(">= 0"));
+    }
 }

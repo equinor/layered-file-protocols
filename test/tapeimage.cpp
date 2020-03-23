@@ -192,25 +192,7 @@ TEST_CASE_METHOD(
     const auto records = GENERATE(1, 2, 3, 5, 8, 13);
     make(records);
 
-    // +1 so that if size is 1, max is still >= min
-    const auto readsize = GENERATE_COPY(take(1, random(1, (size + 1) / 2)));
-    const auto complete_reads = size / readsize;
-
-    auto* p = out.data();
-    std::int64_t nread = 0;
-    for (int i = 0; i < complete_reads; ++i) {
-        const auto err = lfp_readinto(f, p, readsize, &nread);
-        CHECK(err == LFP_OK);
-        CHECK(nread == readsize);
-        p += nread;
-    }
-
-    if (size % readsize != 0) {
-        const auto err = lfp_readinto(f, p, readsize, &nread);
-        CHECK(err == LFP_EOF);
-    }
-
-    CHECK_THAT(out, Equals(expected));
+    test_split_read(this);
 }
 
 TEST_CASE_METHOD(

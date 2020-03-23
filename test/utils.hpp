@@ -74,4 +74,55 @@ struct random_memfile {
 
 }
 
+namespace {
+
+void test_split_read(random_memfile* file) {
+    // +1 so that if size is 1, max is still >= min
+    const auto readsize = GENERATE_COPY(
+                          take(1, random(1, (file->size + 1) / 2)));
+    const auto complete_reads = file->size / readsize;
+
+    auto* p = file->out.data();
+    std::int64_t nread = 0;
+    for (int i = 0; i < complete_reads; ++i) {
+        const auto err = lfp_readinto(file->f, p, readsize, &nread);
+        CHECK(err == LFP_OK);
+        CHECK(nread == readsize);
+        p += nread;
+    }
+
+    if (file->size % readsize != 0) {
+        const auto err = lfp_readinto(file->f, p, readsize, &nread);
+        CHECK(err == LFP_EOF);
+    }
+
+    CHECK_THAT(file->out, Catch::Matchers::Equals(file->expected));
+}
+
+void test_random_seek(random_memfile* file) {
+    const auto n = GENERATE_COPY(take(1, random(0, file->size - 1)));
+    auto err = lfp_seek(file->f, n);
+    REQUIRE(err == LFP_OK);
+
+    std::int64_t tell;
+    err = lfp_tell(file->f, &tell);
+    REQUIRE(err == LFP_OK);
+    CHECK(tell == n);
+
+    const auto remaining = file->size - n;
+    file->expected.erase(file->expected.begin(),
+                         file->expected.begin() + n);
+
+    std::int64_t nread = 0;
+    file->out.resize(remaining);
+    err = lfp_readinto(file->f, file->out.data(), remaining, &nread);
+
+    CHECK(err == LFP_OK);
+    CHECK(nread == remaining);
+    CHECK_THAT(file->out, Catch::Matchers::Equals(file->expected));
+}
+
+}
+
+
 #endif //LFP_TEST_UTILS_HPP
