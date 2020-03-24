@@ -396,13 +396,6 @@ TEST_CASE(
         CHECK_THAT(msg, Contains("< 0"));
     }
 
-    SECTION( "seek outside data borders" ) {
-        const auto err = lfp_seek(tif, 16);
-        CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
-        auto msg = std::string(lfp_errormsg(tif));
-        CHECK_THAT(msg, Contains("beyond end"));
-    }
-
     SECTION( "seek to header border" ) {
         auto err = lfp_seek(tif, 8);
         CHECK(err == LFP_OK);
@@ -415,6 +408,87 @@ TEST_CASE(
 
     lfp_close(tif);
 }
+
+TEST_CASE(
+    "Operation past end-of-file"
+    "[tapeimage][eof]") {
+
+    const auto contents = std::vector< unsigned char > {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x14, 0x00, 0x00, 0x00,
+
+        /* begin body */
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        /* end body */
+
+        0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x20, 0x00, 0x00, 0x00,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x14, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00,
+    };
+
+    const auto expected1 = std::vector< unsigned char > {
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        0xFF, 0xFF // never read by lfp
+    };
+
+    std::FILE* fp = std::tmpfile();
+    std::fwrite(contents.data(), 1, contents.size(), fp);
+    std::rewind(fp);
+
+    auto* cfile = lfp_cfile(fp);
+    auto* tif = lfp_tapeimage_open(cfile);
+
+    SECTION( "Read past eof" ) {
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+
+        CHECK(bytes_read == 8);
+        CHECK(err == LFP_EOF);
+        CHECK_THAT(out, Equals(expected1));
+
+        std::int64_t tell;
+        lfp_tell(tif, &tell);
+        CHECK(tell == 8);
+    }
+
+    SECTION( "Read past eof - after a seek past eof" ) {
+        auto err = lfp_seek(tif, 10);
+        CHECK(err == LFP_OK);
+
+        char x = 0xFF;
+        std::int64_t bytes_read = -1;
+        err = lfp_readinto(tif, &x, 1, &bytes_read);
+
+        CHECK(err == LFP_EOF);
+        CHECK(bytes_read == 0);
+    }
+
+    SECTION( "Seek past eof" ) {
+        auto err = lfp_seek(tif, 10);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell = -1;
+        lfp_tell(tif, &tell);
+        CHECK(tell == 10);
+
+        lfp_protocol* p;
+        err = lfp_peek(tif, &p);
+        CHECK(err == LFP_OK);
+
+        lfp_tell(p, &tell);
+        CHECK(tell == 34);
+    }
+    lfp_close(tif);
+}
+
 
 TEST_CASE(
     "Layered tapeimage closes correctly",

@@ -419,10 +419,18 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         }
 
         if (head.type == tapeimage::file) {
-            throw protocol_fatal(
-                "file header encountered. "
-                "Seek position is beyond end of the file."
-            );
+            /*
+             * Tapeimage's seek behavior when reaching end-of-file is modelled
+             * after C FILE:
+             *
+             * Seek past eof  will reposition the underlying tell to the
+             * tell of eof + the remaining requested bytes.
+             *
+             * Trying to read after a seek-past-eof will immediately report
+             * eof.
+             */
+            this->fp->seek(n + preceeding * header::size + this->zero);
+            break;
         }
 
         this->fp->seek(head.next);
