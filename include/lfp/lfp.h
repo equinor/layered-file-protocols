@@ -157,8 +157,8 @@ enum lfp_status {
     LFP_EOF,
 
     /**
-     * Returned when there the underlying handle reports end-of-file while an
-     * outer protocol expected there to more data.
+     * Returned when the underlying handle reports end-of-file while an outer
+     * protocol expected there to be more data.
      */
     LFP_UNEXPECTED_EOF,
 };
