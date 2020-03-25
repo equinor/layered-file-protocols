@@ -157,8 +157,8 @@ enum lfp_status {
     LFP_EOF,
 
     /**
-     * Returned when there the underlying handle reports end-of-file while an
-     * outer protocol expected there to more data.
+     * Returned when the underlying handle reports end-of-file while an outer
+     * protocol expected there to be more data.
      */
     LFP_UNEXPECTED_EOF,
 };
@@ -271,7 +271,7 @@ int lfp_peek(lfp_protocol* outer, lfp_protocol** inner);
  * \retval 0 End-of-file not reached
  */
 LFP_API
-int lfp_eof(lfp_protocol*) noexcept(true);
+int lfp_eof(lfp_protocol*);
 
 /** Get last set error message
  *

@@ -119,7 +119,7 @@ int lfp_peek(lfp_protocol* outer, lfp_protocol** inner) try {
     return e.status();
 }
 
-int lfp_eof(lfp_protocol* f) noexcept (true) {
+int lfp_eof(lfp_protocol* f) {
     assert(f);
     return f->eof();
 }
