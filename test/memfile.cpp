@@ -66,6 +66,16 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
         random_memfile,
+        "Reading 0 bytes is allowed",
+        "[mem]") {
+    std::int64_t nread = 0;
+    const auto err = lfp_readinto(f, out.data(), 0, &nread);
+    CHECK(err == LFP_OK);
+    CHECK(nread == 0);
+}
+
+TEST_CASE_METHOD(
+        random_memfile,
         "Asking more data than available stops at EOF",
         "[mem]") {
     std::int64_t nread = 0;
@@ -80,25 +90,7 @@ TEST_CASE_METHOD(
         random_memfile,
         "Doing multiple reads yields the full file",
         "[mem]") {
-    // +1 so that if size is 1, max is still >= min
-    const auto readsize = GENERATE_COPY(take(1, random(1, (size + 1) / 2)));
-    const auto complete_reads = size / readsize;
-
-    auto* p = out.data();
-    std::int64_t nread = 0;
-    for (int i = 0; i < complete_reads; ++i) {
-        const auto err = lfp_readinto(f, p, readsize, &nread);
-        CHECK(err == LFP_OK);
-        CHECK(nread == readsize);
-        p += nread;
-    }
-
-    if (size % readsize != 0) {
-        const auto err = lfp_readinto(f, p, readsize, &nread);
-        CHECK(err == LFP_EOF);
-    }
-
-    CHECK_THAT(out, Equals(expected));
+    test_split_read(this);
 }
 
 TEST_CASE("Negative seek return invalid args error", "[mem]") {
@@ -122,18 +114,5 @@ TEST_CASE_METHOD(
     random_memfile,
     "Forward positive seek",
     "[mem]") {
-    const auto n = GENERATE_COPY(take(1, random(0, size - 1)));
-    auto err = lfp_seek(f, n);
-    REQUIRE(err == LFP_OK);
-
-    const auto remaining = size - n;
-    expected.erase(expected.begin(), expected.begin() + n);
-
-    std::int64_t nread = 0;
-    out.resize(remaining);
-    err = lfp_readinto(f, out.data(), remaining, &nread);
-
-    CHECK(err == LFP_OK);
-    CHECK(nread == remaining);
-    CHECK_THAT(out, Equals(expected));
+    test_random_seek(this);
 }

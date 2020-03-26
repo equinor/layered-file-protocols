@@ -26,7 +26,6 @@ int lfp_readinto(lfp_protocol* f,
         std::int64_t* nread) try {
     assert(dst);
     assert(f);
-    assert(len > 0);
 
     if (len < 0) {
         f->errmsg(fmt::format("expected len (which is {}) >= 0", len));
