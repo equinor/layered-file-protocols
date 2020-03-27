@@ -835,6 +835,8 @@ TEST_CASE(
     std::int64_t bytes_read = -1;
     err = lfp_readinto(tif, out.data(), 1, &bytes_read);
     CHECK(err == LFP_UNEXPECTED_EOF);
+
+    lfp_close(tif);
 }
 
 TEST_CASE(
