@@ -1172,6 +1172,7 @@ TEST_CASE(
      */
 
     using header = std::vector< unsigned char >;
+    const size_t GB = 1024 * 1024 * 1024;
 
     class memfake : public lfp_protocol
     {
@@ -1226,11 +1227,37 @@ TEST_CASE(
 
         int eof() const noexcept(true) override { return 0; }
 
+        /* seek and tell handle only expected calls at the headers borders */
+
         void seek(std::int64_t n) noexcept (false) {
-            // for the purpose of this test do nothing and
-            // let readinto to handle return of the correct header
+            int jump = 0;
+            switch (n) {
+                case 0:
+                    break;
+                case 2*GB + 12:
+                    jump = 1;
+                    break;
+                case 3*GB + 24:
+                    jump = 2;
+                    break;
+                default:
+                    throw std::runtime_error("unexpected seek in test");
+            }
+
+            this->it = std::next(std::begin(headers), jump);
             return;
         }
+
+        std::int64_t tell() const noexcept (false) {
+            if(*this->it == headers[1]) {
+                return 2*GB + 12;
+            } else if (*this->it == headers[2]) {
+                return 3*GB + 24;
+            } else {
+                return 0;
+            }
+        }
+
         lfp_protocol* peel() noexcept (false) override { throw; }
         lfp_protocol* peek() const noexcept (false) override { throw; }
 
@@ -1239,13 +1266,11 @@ TEST_CASE(
         std::vector< header >::const_iterator it;
     };
 
-    auto* mem = new memfake();
-    auto* tif = lfp_tapeimage_open(mem);
+    lfp_protocol* mem = new memfake();
+    lfp_protocol* tif = lfp_tapeimage_open(mem);
 
     unsigned char fake_mem = 1;
     unsigned char* dst = &fake_mem;
-
-    const size_t GB = 1024 * 1024 * 1024;
 
     SECTION( "read over 4GB data in one chunk" ) {
         std::int64_t nread = 0;
@@ -1287,17 +1312,18 @@ TEST_CASE(
     }
 
     SECTION( "seek beyond 4GB when zero is close to 4GB" ) {
-        /*
-        // TODO:
-        // would be the case of several logical files
+        lfp_peel(tif, &mem);
+        lfp_close(tif);
 
-        // set TIF start to be at 3GB + 24 bytes (header2)
+        auto err = lfp_seek(mem, 2*GB + 12);
+        REQUIRE(err == LFP_OK);
+        tif = lfp_tapeimage_open(mem);
 
-        auto err = lfp_seek(tif, 2*GB);
+        err = lfp_seek(tif, 2*GB);
+
         CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
-
-        auto msg = std::string(lfp_errormsg(tif));
-        CHECK_THAT(msg, Contains("4GB")); */
+        const auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("4GB"));
     }
 
     lfp_close(tif);
