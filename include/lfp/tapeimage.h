@@ -21,6 +21,11 @@ extern "C" {
  * present. `lfp_seek()` and `lfp_tell()` consider offsets as if the file had
  * no tape markers.
  *
+ * The protocol can be opened at any tapemark within a file. Tells will start
+ * at that tapemark, meaning any previous records are unreachable by the
+ * protocol. Note that it is not possible to open the protocol in the middle of
+ * a record.
+ *
  * In case of an error function will return nullptr and will not obtain
  * ownership over passed protocol.
  */
