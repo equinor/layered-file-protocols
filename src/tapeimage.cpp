@@ -409,16 +409,10 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 
         if (head.type == tapeimage::file) {
             /*
-             * Tapeimage's seek behavior when reaching end-of-file is modelled
-             * after C FILE:
-             *
-             * Seek past eof  will reposition the underlying tell to the
-             * tell of eof + the remaining requested bytes.
-             *
-             * Trying to read after a seek-past-eof will immediately report
-             * eof.
+             * Seeking past eof will is allowed (as in C FILE), but tell is
+             * left undefined. Trying to read after a seek-past-eof will
+             * immediately report eof.
              */
-            this->fp->seek(n + preceeding * header::size + this->zero);
             break;
         }
 

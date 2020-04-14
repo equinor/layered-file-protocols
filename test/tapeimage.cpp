@@ -470,22 +470,6 @@ TEST_CASE(
         CHECK(err == LFP_EOF);
         CHECK(bytes_read == 0);
     }
-
-    SECTION( "Seek past eof" ) {
-        auto err = lfp_seek(tif, 10);
-        CHECK(err == LFP_OK);
-
-        std::int64_t tell = -1;
-        lfp_tell(tif, &tell);
-        CHECK(tell == 10);
-
-        lfp_protocol* p;
-        err = lfp_peek(tif, &p);
-        CHECK(err == LFP_OK);
-
-        lfp_tell(p, &tell);
-        CHECK(tell == 34);
-    }
     lfp_close(tif);
 }
 
