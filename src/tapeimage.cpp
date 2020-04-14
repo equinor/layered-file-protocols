@@ -363,12 +363,6 @@ void tapeimage::read_header() noexcept (false) {
     }
 
     this->append(head);
-    const auto tell = this->markers.size() == 1
-                    ? header::size + this->zero
-                    : this->current->next + header::size;
-
-    this->current = std::prev(this->markers.end());
-    this->current.remaining = head.next - tell;
 }
 
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
@@ -457,13 +451,17 @@ bool tapeimage::is_indexed(std::int64_t n) const noexcept (true) {
     return last > n + header_contrib + this->zero;
 }
 
-void tapeimage::append(const header& head) noexcept (false) try {
-    const auto size = std::int64_t(this->markers.size());
-    const auto n = std::max(size - 1, std::int64_t(0));
-    this->markers.push_back(head);
-    this->current = this->markers.begin() + n;
-} catch (...) {
-    throw runtime_error("tapeimage: unable to store header");
+void tapeimage::append(const header& head) noexcept (false) {
+    const auto tell = this->markers.empty()
+                    ? header::size + this->zero
+                    : this->markers.back().next + header::size;
+    try {
+        this->markers.push_back(head);
+    } catch (...) {
+        throw runtime_error("tapeimage: unable to store header");
+    }
+    this->current = std::prev(this->markers.end());
+    this->current.remaining = head.next - tell;
 }
 
 }
