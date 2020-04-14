@@ -144,11 +144,6 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
             return bytes_read;
 
         if (this->current.remaining == 0) {
-            /*
-             * There has been a backwards seek, and the current record is now
-             * exhausted. Conceptually, just read the header, but pull it from
-             * the index instead of disk.
-             */
             this->read_header(this->current);
 
             /* might be EOF, or even empty records, so re-start  */
