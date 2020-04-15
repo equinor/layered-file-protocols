@@ -337,23 +337,15 @@ void tapeimage::read_header() noexcept (false) {
          * ------------------------
          * prev|A|next  prev|B|next
          * ------------------------
-         * B.prev should point to A.position, but we do not store it.
-         * Assumption that first header is always at position 0 doesn't hold
-         * as user should be able to open TIF file from the middle of physical
-         * file. But next still should hold:
-         * -----------------------------
-         * | A.prev <= B.prev <= A.next |
-         * ------------------------------
-         * So this is the condition we check for
+         * B.prev must be pointing to A.position. As we can open file on on
+         * tape header, we know that position of A is actually our zero.
          */
-        if (head.prev > markers.back().next or
-            head.prev < markers.back().prev) {
-            const auto msg = "file corrupt: second header prev (= {}) is not "
-                             "between first header prev (= {}) and "
-                             "next (= {}). Error happened in recovery mode. "
-                             "File might be missing data";
+        if (head.prev != this->zero) {
+            const auto msg = "file corrupt: second header prev (= {}) must be "
+                             "pointing to zero (= {}). Error happened in "
+                             "recovery mode. File might be missing data";
             throw protocol_failed_recovery(fmt::format(
-                  msg, head.prev, markers.back().prev, markers.back().next));
+                  msg, head.prev, this->zero));
         }
     }
 
