@@ -456,7 +456,7 @@ std::int64_t tapeimage::tell() const noexcept (false) {
 bool tapeimage::search_further(const headeriterator& cur,
                                const std::int64_t &n) const noexcept (true) {
     /* True if tell n belongs to header further in the list */
-    return cur->next <= n + this->protocol_overhead(cur);
+    return cur->next < n + this->protocol_overhead(cur);
 }
 
 std::int64_t tapeimage::protocol_overhead(const headeriterator& cur) const
