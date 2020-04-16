@@ -92,6 +92,7 @@ target_compile_options(lfp
 target_compile_definitions(lfp
     PRIVATE
         $<$<BOOL:${LFP_BIG_ENDIAN}>:IS_BIG_ENDIAN>
+        $<$<NOT:$<BOOL:${LFP_BIG_ENDIAN}>>:IS_LITTLE_ENDIAN>
 )
 
 install(
