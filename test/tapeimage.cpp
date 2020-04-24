@@ -381,9 +381,10 @@ TEST_CASE(
         0x54, 0x41, 0x50, 0x45,
         0x4D, 0x41, 0x52, 0x4B,
 
-        0x01, 0x00, 0x00, 0x00,
-        0x14, 0x00, 0x00, 0x00,
-        0x34, 0x00, 0x00, 0x00,
+        /*spoiled border*/
+        0xAA, 0xAA, 0xAA, 0xAA,
+        0x99, 0x99, 0x99, 0x99,
+        0x88, 0x88, 0x88, 0x88,
     };
 
     auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
@@ -396,8 +397,44 @@ TEST_CASE(
         CHECK_THAT(msg, Contains("< 0"));
     }
 
-    SECTION( "seek to header border" ) {
-        auto err = lfp_seek(tif, 8);
+    SECTION( "seek to header border: not indexed" ) {
+        auto err = lfp_seek(tif, 16);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(tif, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 16);
+    }
+
+    SECTION( "seek to header border: index border" ) {
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(tif, 0);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(tif, 16);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(tif, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 16);
+    }
+
+    SECTION( "seek to header border: indexed" ) {
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(tif, 0);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(tif, 8);
         CHECK(err == LFP_OK);
 
         std::int64_t tell;
@@ -469,22 +506,6 @@ TEST_CASE(
 
         CHECK(err == LFP_EOF);
         CHECK(bytes_read == 0);
-    }
-
-    SECTION( "Seek past eof" ) {
-        auto err = lfp_seek(tif, 10);
-        CHECK(err == LFP_OK);
-
-        std::int64_t tell = -1;
-        lfp_tell(tif, &tell);
-        CHECK(tell == 10);
-
-        lfp_protocol* p;
-        err = lfp_peek(tif, &p);
-        CHECK(err == LFP_OK);
-
-        lfp_tell(p, &tell);
-        CHECK(tell == 34);
     }
     lfp_close(tif);
 }

@@ -50,6 +50,8 @@ private:
 
         std::int64_t remaining = 0;
     };
+    using headeriterator = std::vector< header >::const_iterator;
+
     /*
      * The current record - it's an iterator to be able to move between
      * already-index'd records, and detect when the next needs to be read.
@@ -62,7 +64,10 @@ private:
     void append(const header&) noexcept (false);
     void read_header() noexcept (false);
     void read_header(cursor) noexcept (false);
-    bool is_indexed(std::int64_t) const noexcept (true);
+    bool search_further(const headeriterator&, const std::int64_t&)
+        const noexcept (true);
+    std::int64_t protocol_overhead(const headeriterator&)
+        const noexcept (true);
     void seek_with_index(std::int64_t) noexcept (false);
 
     lfp_status recovery = LFP_OK;
@@ -144,11 +149,6 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
             return bytes_read;
 
         if (this->current.remaining == 0) {
-            /*
-             * There has been a backwards seek, and the current record is now
-             * exhausted. Conceptually, just read the header, but pull it from
-             * the index instead of disk.
-             */
             this->read_header(this->current);
 
             /* might be EOF, or even empty records, so re-start  */
@@ -342,52 +342,69 @@ void tapeimage::read_header() noexcept (false) {
          * ------------------------
          * prev|A|next  prev|B|next
          * ------------------------
-         * B.prev should point to A.position, but we do not store it.
-         * Assumption that first header is always at position 0 doesn't hold
-         * as user should be able to open TIF file from the middle of physical
-         * file. But next still should hold:
-         * -----------------------------
-         * | A.prev <= B.prev <= A.next |
-         * ------------------------------
-         * So this is the condition we check for
+         * B.prev must be pointing to A.position. As we can open file on on
+         * tape header, we know that position of A is actually our zero.
          */
-        if (head.prev > markers.back().next or
-            head.prev < markers.back().prev) {
-            const auto msg = "file corrupt: second header prev (= {}) is not "
-                             "between first header prev (= {}) and "
-                             "next (= {}). Error happened in recovery mode. "
-                             "File might be missing data";
+        if (head.prev != this->zero) {
+            const auto msg = "file corrupt: second header prev (= {}) must be "
+                             "pointing to zero (= {}). Error happened in "
+                             "recovery mode. File might be missing data";
             throw protocol_failed_recovery(fmt::format(
-                  msg, head.prev, markers.back().prev, markers.back().next));
+                  msg, head.prev, this->zero));
         }
     }
 
     this->append(head);
-    const auto tell = this->markers.size() == 1
-                    ? header::size + this->zero
-                    : this->current->next + header::size;
-
-    this->current = std::prev(this->markers.end());
-    this->current.remaining = head.next - tell;
 }
 
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
-    decltype(this->current.remaining) base = this->zero;
-    auto end = std::find_if(this->markers.begin(), this->markers.end(),
-        [&base, n](const header& head) noexcept (true) {
-            base += 12;
-            return head.next > base + n;
+    /**
+     * Search for correct header in 2 phases:
+     * Phase 1: using binary search find header which is close enough to
+     * the correct one, but not later than it.
+     * Phase 2: using linear search find correct header.
+     *
+     *
+     * Phase 1:
+     * We pretend that there is no overhead introduced by headers. Then we can
+     * simply search for the record corresponding to 'n'.
+     *
+     * Note that binary search from std operates on headers only. Headers do
+     * not know their position in the list, thus we cannot count their
+     * contribution with this approach. That's why we need phase 2.
+     *
+     * Phase 2:
+     * After phase 1 we have a suspect and we are sure that correct header is
+     * current one or somewhere further down the list. So we can search for it.
+     * With expected/reasonable record sizes there shouldn't be too many hops
+     * to make a real difference in performance.
+     */
+
+    //phase 1
+    auto pred = [&](const tapeimage::header &h, const std::int64_t &n) {
+         return h.next < n + this->zero;
+    };
+
+    auto cur = std::lower_bound(this->markers.begin(),
+                                this->markers.end(),
+                                n,
+                                pred);
+
+    //phase 2
+    while(true) {
+        if (!this->search_further(cur, n)) {
+            break;
         }
-    );
+        ++cur;
+    }
 
     // TODO: check runtime too?
-    assert(end < this->markers.end());
+    assert(cur < this->markers.end());
 
-    const auto preceeding = 1 + std::distance(this->markers.begin(), end);
-    const auto real_offset = n + (preceeding * header::size) + this->zero;
+    const auto real_offset = n + this->protocol_overhead(cur);
     this->fp->seek(real_offset);
-    this->current = end;
-    this->current.remaining = end->next - real_offset;
+    this->current = cur;
+    this->current.remaining = cur->next - real_offset;
 }
 
 void tapeimage::seek(std::int64_t n) noexcept (false) {
@@ -401,7 +418,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     /*
      * Have we already index'd the right section? If so, use it and seek there.
      */
-    if (this->is_indexed(n)) {
+    if (!this->search_further(std::prev(this->markers.end()), n)) {
         return this->seek_with_index(n);
     }
 
@@ -409,61 +426,59 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
      * The target is past the already-index'd records, so follow the headers,
      * and index them as we go.
      */
-    auto preceeding = this->markers.size();
     this->current = std::prev(this->markers.end());
     while (true) {
-        const auto& head = this->markers.back();
-        if (head.next > n + preceeding * header::size + this->zero) {
+        const auto last = std::prev(this->markers.end());
+        if (!this->search_further(last, n)) {
             // TODO: maybe reposition directly *or* refactor out proper
             return this->seek(n);
         }
 
-        if (head.type == tapeimage::file) {
+        if (last->type == tapeimage::file) {
             /*
-             * Tapeimage's seek behavior when reaching end-of-file is modelled
-             * after C FILE:
-             *
-             * Seek past eof  will reposition the underlying tell to the
-             * tell of eof + the remaining requested bytes.
-             *
-             * Trying to read after a seek-past-eof will immediately report
-             * eof.
+             * Seeking past eof will is allowed (as in C FILE), but tell is
+             * left undefined. Trying to read after a seek-past-eof will
+             * immediately report eof.
              */
-            this->fp->seek(n + preceeding * header::size + this->zero);
             break;
         }
 
-        this->fp->seek(head.next);
+        this->fp->seek(last->next);
         this->read_header();
-        ++preceeding;
     }
 }
 
 std::int64_t tapeimage::tell() const noexcept (false) {
-    const auto real_offset = this->fp->tell();
-
     assert(not this->markers.empty());
-    const auto begin          = std::begin(this->markers);
-    const decltype(begin) end = std::next(this->current);
-    const auto preceeding = std::distance(begin, end);
-    assert(preceeding >= 0);
-
-    return real_offset - preceeding*header::size - this->zero;
+    return this->fp->tell() - this->protocol_overhead(this->current);
 }
 
-bool tapeimage::is_indexed(std::int64_t n) const noexcept (true) {
-    const auto last = this->markers.back().next;
-    const auto header_contrib = this->markers.size() * header::size;
-    return last > n + header_contrib + this->zero;
+bool tapeimage::search_further(const headeriterator& cur,
+                               const std::int64_t &n) const noexcept (true) {
+    /* True if tell n belongs to header further in the list */
+    return cur->next < n + this->protocol_overhead(cur);
 }
 
-void tapeimage::append(const header& head) noexcept (false) try {
-    const auto size = std::int64_t(this->markers.size());
-    const auto n = std::max(size - 1, std::int64_t(0));
-    this->markers.push_back(head);
-    this->current = this->markers.begin() + n;
-} catch (...) {
-    throw runtime_error("tapeimage: unable to store header");
+std::int64_t tapeimage::protocol_overhead(const headeriterator& cur) const
+    noexcept (true) {
+    /* Returns amount of byte introduced by tapeimage protocol up to and
+     * including provided header
+     */
+    return header::size * (1 + std::distance(this->markers.begin(), cur))
+           + this->zero;
+}
+
+void tapeimage::append(const header& head) noexcept (false) {
+    const auto tell = this->markers.empty()
+                    ? header::size + this->zero
+                    : this->markers.back().next + header::size;
+    try {
+        this->markers.push_back(head);
+    } catch (...) {
+        throw runtime_error("tapeimage: unable to store header");
+    }
+    this->current = std::prev(this->markers.end());
+    this->current.remaining = head.next - tell;
 }
 
 }
