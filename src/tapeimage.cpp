@@ -62,7 +62,7 @@ private:
 
     std::int64_t readinto(void* dst, std::int64_t) noexcept (false);
     void append(const header&) noexcept (false);
-    void read_header_from_disk() noexcept (false);
+    header read_header_from_disk() noexcept (false);
     void read_header(cursor) noexcept (false);
     bool search_further(const headeriterator&, const std::int64_t&)
         const noexcept (true);
@@ -199,8 +199,10 @@ void tapeimage::read_header(cursor cur) noexcept (false) {
     /*
      * The next record has not been index'd yet, so read it from disk
      */
-    if (std::next(cur) == std::end(this->markers))
-        return this->read_header_from_disk();
+    if (std::next(cur) == std::end(this->markers)) {
+        this->read_header_from_disk();
+        return;
+    }
 
     /*
      * The record *has* been index'd, so just reposition the underlying stream
@@ -220,7 +222,7 @@ int tapeimage::eof() const noexcept (true) {
     return this->current->type == tapeimage::file;
 }
 
-void tapeimage::read_header_from_disk() noexcept (false) {
+tapeimage::header tapeimage::read_header_from_disk() noexcept (false) {
     assert(this->markers.empty()                    or
            this->current     == this->markers.end() or
            this->current + 1 == this->markers.end());
@@ -355,6 +357,7 @@ void tapeimage::read_header_from_disk() noexcept (false) {
     }
 
     this->append(head);
+    return this->markers.back();
 }
 
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
