@@ -62,7 +62,7 @@ private:
 
     std::int64_t readinto(void* dst, std::int64_t) noexcept (false);
     void append(const header&) noexcept (false);
-    void read_header() noexcept (false);
+    void read_header_from_disk() noexcept (false);
     void read_header(cursor) noexcept (false);
     bool search_further(const headeriterator&, const std::int64_t&)
         const noexcept (true);
@@ -92,7 +92,7 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
     }
 
     try {
-        this->read_header();
+        this->read_header_from_disk();
     } catch (...) {
         this->fp.release();
         throw;
@@ -200,7 +200,7 @@ void tapeimage::read_header(cursor cur) noexcept (false) {
      * The next record has not been index'd yet, so read it from disk
      */
     if (std::next(cur) == std::end(this->markers))
-        return this->read_header();
+        return this->read_header_from_disk();
 
     /*
      * The record *has* been index'd, so just reposition the underlying stream
@@ -220,7 +220,7 @@ int tapeimage::eof() const noexcept (true) {
     return this->current->type == tapeimage::file;
 }
 
-void tapeimage::read_header() noexcept (false) {
+void tapeimage::read_header_from_disk() noexcept (false) {
     assert(this->markers.empty()                    or
            this->current     == this->markers.end() or
            this->current + 1 == this->markers.end());
@@ -444,7 +444,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         }
 
         this->fp->seek(last->next);
-        this->read_header();
+        this->read_header_from_disk();
     }
 }
 
