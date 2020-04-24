@@ -428,8 +428,8 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     }
 
     /*
-     * The target is past the already-index'd records, so follow the headers,
-     * and index them as we go.
+     * The target is beyond what we have indexed, so chase the headers and add
+     * them to the index as we go
      */
     this->current = std::prev(this->markers.end());
     while (true) {
