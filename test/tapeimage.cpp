@@ -443,6 +443,26 @@ TEST_CASE(
         CHECK(tell == 8);
     }
 
+    SECTION("seek to header border: start of current record") {
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(tif, 12);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(tif, 8);
+        CHECK(err == LFP_OK);
+
+        lfp_protocol* inner;
+        lfp_peek(tif, &inner);
+
+        std::int64_t inner_tell;
+        lfp_tell(inner, &inner_tell);
+        CHECK(inner_tell == 20);
+    }
+
     lfp_close(tif);
 }
 

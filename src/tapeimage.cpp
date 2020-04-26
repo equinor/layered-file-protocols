@@ -361,6 +361,38 @@ tapeimage::header tapeimage::read_header_from_disk() noexcept (false) {
 }
 
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
+    /*
+     * A real world usage pattern is a lot of small (forward) seeks still
+     * within the same record. A lot of time can be saved by not looking
+     * through the index when the seek is inside the current record.
+     *
+     * There are three cases:
+     * - Backwards seek, into a different record
+     * - Forward or backwards seek within this record
+     * - Forward seek, into a different record
+     */
+    assert(n >= 0);
+    const auto in_current_record = [this] (std::int64_t n) noexcept (true) {
+        const auto overhead = this->protocol_overhead(this->current);
+        const auto end = this->current->next - overhead;
+
+        if (this->markers.begin() == this->current)
+            return end > n;
+
+        const auto begin = std::prev(this->current)->next
+                         - (overhead - header::size);
+
+        return n > begin and n <= end;
+    };
+
+    if (in_current_record(n)) {
+        const auto overhead = this->protocol_overhead(this->current);
+        const auto real_offset = n + overhead;
+        this->fp->seek(real_offset);
+        this->current.remaining = this->current->next - real_offset;
+        return;
+    }
+
     /**
      * Search for correct header in 2 phases:
      * Phase 1: using binary search find header which is close enough to
