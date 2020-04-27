@@ -486,7 +486,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     this->current = std::prev(this->markers.end());
     while (true) {
         const auto last = std::prev(this->markers.end());
-        if (!this->search_further(last, n)) {
+        if (n + this->protocol_overhead(last) <= last->next) {
             // TODO: maybe reposition directly *or* refactor out proper
             return this->seek(n);
         }
