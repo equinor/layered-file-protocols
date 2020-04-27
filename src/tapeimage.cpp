@@ -20,6 +20,36 @@ struct header {
     static constexpr const int size = 12;
 };
 
+/**
+ * Address translator between physical offsets (provided by the underlying
+ * file) and logical offsets (presented to the user).
+ */
+class address_map {
+public:
+    address_map() = default;
+    explicit address_map(std::int64_t z) : zero(z) {}
+
+    /**
+     * Get the logical address from the physical address, i.e. the one reported
+     * by tapeimage::tell(), in the bytestream with no interleaved headers.
+     */
+    std::int64_t logical(std::int64_t addr, int record) const noexcept (true);
+    /**
+     * Get the physical address from the logical address, i.e. the address with
+     * headers accounted for.
+     *
+     * Warning
+     * -------
+     *  This function assumes the physical address within record.
+     */
+    std::int64_t physical(std::int64_t addr, int record) const noexcept (true);
+    std::int64_t base() const noexcept (true);
+
+private:
+    std::int64_t zero = 0;
+};
+
+
 class tapeimage : public lfp_protocol {
 public:
     tapeimage(lfp_protocol*);
@@ -42,8 +72,7 @@ private:
     static constexpr const std::uint32_t record = 0;
     static constexpr const std::uint32_t file   = 1;
 
-    std::int64_t zero;
-
+    address_map addr;
     unique_lfp fp;
     std::vector< header > markers;
     struct cursor : public std::vector< header >::const_iterator {
@@ -65,12 +94,26 @@ private:
     void append(const header&) noexcept (false);
     header read_header_from_disk() noexcept (false);
     void read_header(cursor) noexcept (false);
-    std::int64_t protocol_overhead(const headeriterator&)
-        const noexcept (true);
     void seek_with_index(std::int64_t) noexcept (false);
 
     lfp_status recovery = LFP_OK;
 };
+
+std::int64_t
+address_map::logical(std::int64_t addr, int record)
+const noexcept (true) {
+    return addr - (header::size * (1 + record)) - this->zero;
+}
+
+std::int64_t
+address_map::physical(std::int64_t addr, int record)
+const noexcept (true) {
+    return addr + (header::size * (1 + record)) + this->zero;
+}
+
+std::int64_t address_map::base() const noexcept (true) {
+    return this->zero;
+}
 
 tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
     /*
@@ -85,9 +128,9 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
      * to interrogate the underlying handle more thoroughly.
      */
     try {
-        this->zero = this->fp->tell();
+        this->addr = address_map(this->fp->tell());
     } catch (const lfp::error&) {
-        this->zero = 0;
+        this->addr = address_map();
     }
 
     try {
@@ -346,12 +389,12 @@ header tapeimage::read_header_from_disk() noexcept (false) {
          * B.prev must be pointing to A.position. As we can open file on on
          * tape header, we know that position of A is actually our zero.
          */
-        if (head.prev != this->zero) {
+        if (head.prev != this->addr.base()) {
             const auto msg = "file corrupt: second header prev (= {}) must be "
                              "pointing to zero (= {}). Error happened in "
                              "recovery mode. File might be missing data";
             throw protocol_failed_recovery(fmt::format(
-                  msg, head.prev, this->zero));
+                  msg, head.prev, this->addr.base()));
         }
     }
 
@@ -371,22 +414,25 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
      * - Forward seek, into a different record
      */
     assert(n >= 0);
-    const auto in_current_record = [this] (std::int64_t n) noexcept (true) {
-        const auto overhead = this->protocol_overhead(this->current);
-        const auto end = this->current->next - overhead;
 
-        if (this->markers.begin() == this->current)
+    const auto in_current_record = [this] (std::int64_t n) noexcept (true) {
+        const auto pos = this->current - this->markers.begin();
+        const auto end = this->addr.logical(this->current->next, pos);
+
+        if (pos == 0)
             return end > n;
 
-        const auto begin = std::prev(this->current)->next
-                         - (overhead - header::size);
+        const auto begin = this->addr.logical(
+                std::prev(this->current)->next,
+                pos - 1
+        );
 
         return n > begin and n <= end;
     };
 
     if (in_current_record(n)) {
-        const auto overhead = this->protocol_overhead(this->current);
-        const auto real_offset = n + overhead;
+        const auto record_pos = this->current - this->markers.begin();
+        const auto real_offset = this->addr.physical(n, record_pos);
         this->fp->seek(real_offset);
         this->current.remaining = this->current->next - real_offset;
         return;
@@ -413,7 +459,7 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
      */
 
     // phase 1
-    const auto zero = this->zero;
+    const auto zero = this->addr.base();
     auto less = [zero] (const header& h, std::int64_t n) noexcept (true) {
          return h.next < n + zero;
     };
@@ -437,12 +483,12 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
      * algorithms. The use of lambda + find-if is still valuable though, as it
      * gives a clean error check if the offset n is somehow *not* in the index.
      */
-    auto overhead = this->protocol_overhead(lower);
-    const auto next_larger = [this, n, overhead] (const header& rec) mutable {
-        const auto is_larger = n + overhead <= rec.next;
-        overhead += header::size;
-        return is_larger;
+
+    auto pos = lower - this->markers.begin();
+    const auto next_larger = [this, n, pos] (const header& rec) mutable {
+        return n <= this->addr.logical(rec.next, pos++);
     };
+
 
     const auto cur = std::find_if(
             lower,
@@ -455,7 +501,7 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
         throw std::logic_error(fmt::format(msg, n, this->markers.back().next));
     }
 
-    const auto real_offset = n + this->protocol_overhead(cur);
+    const auto real_offset = this->addr.physical(n, cur - markers.begin());
     this->fp->seek(real_offset);
     this->current = cur;
     this->current.remaining = cur->next - real_offset;
@@ -471,7 +517,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 
     const auto already_indexed = [this] (std::int64_t n) noexcept (true) {
         const auto last = std::prev(this->markers.end());
-        return n <= (last->next - this->protocol_overhead(last));
+        return n <= this->addr.logical(last->next, this->markers.size() - 1);
     };
 
     if (already_indexed(n)) {
@@ -485,8 +531,9 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     this->current = std::prev(this->markers.end());
     while (true) {
         const auto last = std::prev(this->markers.end());
-        if (n + this->protocol_overhead(last) <= last->next) {
-            const auto real_offset = n + this->protocol_overhead(last);
+        const auto pos = last - this->markers.begin();
+        const auto real_offset = this->addr.physical(n, pos);
+        if (real_offset <= last->next) {
             this->fp->seek(real_offset);
             this->current = last;
             this->current.remaining = last->next - real_offset;
@@ -509,22 +556,15 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 
 std::int64_t tapeimage::tell() const noexcept (false) {
     assert(not this->markers.empty());
-    return this->fp->tell() - this->protocol_overhead(this->current);
-}
-
-std::int64_t tapeimage::protocol_overhead(const headeriterator& cur) const
-    noexcept (true) {
-    /* Returns amount of byte introduced by tapeimage protocol up to and
-     * including provided header
-     */
-    return header::size * (1 + std::distance(this->markers.begin(), cur))
-           + this->zero;
+    const auto pos = this->current - this->markers.begin();
+    return this->addr.logical(this->fp->tell(), pos);
 }
 
 void tapeimage::append(const header& head) noexcept (false) {
     const auto tell = this->markers.empty()
-                    ? header::size + this->zero
-                    : this->markers.back().next + header::size;
+                    ? header::size + this->addr.base()
+                    : header::size +this->markers.back().next
+                    ;
     try {
         this->markers.push_back(head);
     } catch (...) {
