@@ -485,8 +485,11 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     while (true) {
         const auto last = std::prev(this->markers.end());
         if (n + this->protocol_overhead(last) <= last->next) {
-            // TODO: maybe reposition directly *or* refactor out proper
-            return this->seek(n);
+            const auto real_offset = n + this->protocol_overhead(last);
+            this->fp->seek(real_offset);
+            this->current = last;
+            this->current.remaining = last->next - real_offset;
+            return;
         }
 
         if (last->type == tapeimage::file) {
