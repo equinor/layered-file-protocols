@@ -12,6 +12,14 @@
 
 namespace lfp { namespace {
 
+struct header {
+    std::uint32_t type;
+    std::uint32_t prev;
+    std::uint32_t next;
+
+    static constexpr const int size = 12;
+};
+
 class tapeimage : public lfp_protocol {
 public:
     tapeimage(lfp_protocol*);
@@ -35,13 +43,6 @@ private:
     static constexpr const std::uint32_t file   = 1;
 
     std::int64_t zero;
-    struct header {
-        std::uint32_t type;
-        std::uint32_t prev;
-        std::uint32_t next;
-
-        static constexpr const int size = 12;
-    };
 
     unique_lfp fp;
     std::vector< header > markers;
@@ -220,7 +221,7 @@ int tapeimage::eof() const noexcept (true) {
     return this->current->type == tapeimage::file;
 }
 
-tapeimage::header tapeimage::read_header_from_disk() noexcept (false) {
+header tapeimage::read_header_from_disk() noexcept (false) {
     assert(this->markers.empty()                    or
            this->current     == this->markers.end() or
            this->current + 1 == this->markers.end());
