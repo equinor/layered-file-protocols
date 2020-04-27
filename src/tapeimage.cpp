@@ -64,8 +64,6 @@ private:
     void append(const header&) noexcept (false);
     header read_header_from_disk() noexcept (false);
     void read_header(cursor) noexcept (false);
-    bool search_further(const headeriterator&, const std::int64_t&)
-        const noexcept (true);
     std::int64_t protocol_overhead(const headeriterator&)
         const noexcept (true);
     void seek_with_index(std::int64_t) noexcept (false);
@@ -508,12 +506,6 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 std::int64_t tapeimage::tell() const noexcept (false) {
     assert(not this->markers.empty());
     return this->fp->tell() - this->protocol_overhead(this->current);
-}
-
-bool tapeimage::search_further(const headeriterator& cur,
-                               const std::int64_t &n) const noexcept (true) {
-    /* True if tell n belongs to header further in the list */
-    return cur->next < n + this->protocol_overhead(cur);
 }
 
 std::int64_t tapeimage::protocol_overhead(const headeriterator& cur) const
