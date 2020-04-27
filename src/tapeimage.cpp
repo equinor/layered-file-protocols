@@ -259,7 +259,7 @@ void tapeimage::read_header(cursor cur) noexcept (false) {
 // TODO: status instead of boolean?
 int tapeimage::eof() const noexcept (true) {
     assert(not this->markers.empty());
-    // TODO: consider when this says record, but phyiscal file is EOF
+    // TODO: consider when this says record, but physical file is EOF
     // TODO: end-of-file is an _empty_ record, i.e. two consecutive tape marks
     return this->current->type == tapeimage::file;
 }
@@ -447,7 +447,7 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
      * The algorithm actually makes two searches:
      *
      * Phase 1 is an approximating binary search that pretends the logical and
-     * phyiscal offset are the same. Since phyiscal offset >= logical offset,
+     * physical offset are the same. Since physical offset >= logical offset,
      * we know that the result is always correct or before the correct one in
      * the ordered index.
      *
