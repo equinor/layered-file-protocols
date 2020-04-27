@@ -49,6 +49,15 @@ private:
     std::int64_t zero = 0;
 };
 
+class record_index : public std::vector< header > {
+public:
+    const_iterator find(std::int64_t n, const_iterator hint)
+        const noexcept (false);
+    void set(const address_map&) noexcept (true);
+
+private:
+    address_map addr;
+};
 
 class tapeimage : public lfp_protocol {
 public:
@@ -74,13 +83,15 @@ private:
 
     address_map addr;
     unique_lfp fp;
-    std::vector< header > markers;
-    struct cursor : public std::vector< header >::const_iterator {
-        using std::vector< header >::const_iterator::const_iterator;
+    record_index markers;
+    struct cursor : public record_index::const_iterator {
+        using base_type = record_index::const_iterator;
+        using base_type::base_type;
+        cursor() = default;
+        explicit cursor(const base_type& cur) : base_type(cur) {}
 
         std::int64_t remaining = 0;
     };
-    using headeriterator = std::vector< header >::const_iterator;
 
     /*
      * The current record - it's an iterator to be able to move between
@@ -115,6 +126,96 @@ std::int64_t address_map::base() const noexcept (true) {
     return this->zero;
 }
 
+std::vector< header >::const_iterator
+record_index::find(std::int64_t n, const_iterator hint) const noexcept (false) {
+    /*
+     * A real world usage pattern is a lot of small (forward) seeks still
+     * within the same record. A lot of time can be saved by not looking
+     * through the index when the seek is inside the current record.
+     *
+     * There are three cases:
+     * - Backwards seek, into a different record
+     * - Forward or backwards seek within this record
+     * - Forward seek, into a different record
+     */
+    assert(n >= 0);
+    const auto in_hint = [this, hint] (std::int64_t n) noexcept (true) {
+        const auto pos = hint - this->begin();
+        const auto end = this->addr.logical(hint->next, pos);
+
+        if (pos == 0)
+            return end > n;
+
+        const auto begin = this->addr.logical(
+                std::prev(hint)->next,
+                pos - 1
+        );
+
+        return n > begin and n <= end;
+    };
+
+    if (in_hint(n)) {
+        return hint;
+    }
+
+    /**
+     * Look up the record containing the logical offset n in the index.
+     *
+     * seek() is a pretty common operation, and experience from dlisio [1]
+     * shows that a poor algorithm here significantly slows down programs.
+     *
+     * The algorithm actually makes two searches:
+     *
+     * Phase 1 is an approximating binary search that pretends the logical and
+     * phyiscal offset are the same. Since phyiscal offset >= logical offset,
+     * we know that the result is always correct or before the correct one in
+     * the ordered index.
+     *
+     * Phase 2 is a linear search from [cur, end) that is aware of the
+     * logical/physical offset distinction. Because of the approximation, it
+     * should do fairly few hops.
+     *
+     * [1] https://github.com/equinor/dlisio
+     */
+
+    // phase 1
+    const auto addr = this->addr;
+    auto less = [addr] (const header& h, std::int64_t n) noexcept (true) {
+        return addr.logical(h.next, 0) < n;
+    };
+
+    const auto lower = std::lower_bound(this->begin(), this->end(), n, less);
+
+    // phase 2
+    /*
+     * We found the right record when record->next > n. All hits after will
+     * also be a match, but this is ok since the search is in an ordered list.
+     *
+     * Using a mutable lambda to carry the header contribution is a pretty
+     * convoluted approach, but both the element *and* the header sizes need to
+     * be accounted for, and the latter is only available through the
+     * *position* in the index, which doesn't play so well with the std
+     * algorithms. The use of lambda + find-if is still valuable though, as it
+     * gives a clean error check if the offset n is somehow *not* in the index.
+     */
+    auto pos = lower - this->begin();
+    auto next_larger = [this, n, pos] (const header& rec) mutable {
+        return n <= this->addr.logical(rec.next, pos++);
+    };
+
+    const auto cur = std::find_if(lower, this->end(), next_larger);
+    if (cur >= this->end()) {
+        const auto msg = "seek: n = {} not found in index, end->next = {}";
+        throw std::logic_error(fmt::format(msg, n, this->back().next));
+    }
+
+    return cur;
+}
+
+void record_index::set(const address_map& m) noexcept (true) {
+    this->addr = m;
+}
+
 tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
     /*
      * The real risks here is that the I/O device is *very* slow or blocked,
@@ -129,8 +230,10 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
      */
     try {
         this->addr = address_map(this->fp->tell());
+        this->markers.set(this->addr);
     } catch (const lfp::error&) {
         this->addr = address_map();
+        this->markers.set(this->addr);
     }
 
     try {
@@ -403,108 +506,13 @@ header tapeimage::read_header_from_disk() noexcept (false) {
 }
 
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
-    /*
-     * A real world usage pattern is a lot of small (forward) seeks still
-     * within the same record. A lot of time can be saved by not looking
-     * through the index when the seek is inside the current record.
-     *
-     * There are three cases:
-     * - Backwards seek, into a different record
-     * - Forward or backwards seek within this record
-     * - Forward seek, into a different record
-     */
     assert(n >= 0);
-
-    const auto in_current_record = [this] (std::int64_t n) noexcept (true) {
-        const auto pos = this->current - this->markers.begin();
-        const auto end = this->addr.logical(this->current->next, pos);
-
-        if (pos == 0)
-            return end > n;
-
-        const auto begin = this->addr.logical(
-                std::prev(this->current)->next,
-                pos - 1
-        );
-
-        return n > begin and n <= end;
-    };
-
-    if (in_current_record(n)) {
-        const auto record_pos = this->current - this->markers.begin();
-        const auto real_offset = this->addr.physical(n, record_pos);
-        this->fp->seek(real_offset);
-        this->current.remaining = this->current->next - real_offset;
-        return;
-    }
-
-    /**
-     * Look up the record containing the logical offset n in the index.
-     *
-     * seek() is a pretty common operation, and experience from dlisio [1]
-     * shows that a poor algorithm here significantly slows down programs.
-     *
-     * The algorithm actually makes two searches:
-     *
-     * Phase 1 is an approximating binary search that pretends the logical and
-     * physical offset are the same. Since physical offset >= logical offset,
-     * we know that the result is always correct or before the correct one in
-     * the ordered index.
-     *
-     * Phase 2 is a linear search from [cur, end) that is aware of the
-     * logical/physical offset distinction. Because of the approximation, it
-     * should do fairly few hops.
-     *
-     * [1] https://github.com/equinor/dlisio
-     */
-
-    // phase 1
-    const auto zero = this->addr.base();
-    auto less = [zero] (const header& h, std::int64_t n) noexcept (true) {
-         return h.next < n + zero;
-    };
-
-    auto lower = std::lower_bound(
-        this->markers.begin(),
-        this->markers.end(),
-        n,
-        less
-    );
-
-    // phase 2
-    /*
-     * We found the right record when record->next > n. All hits after will
-     * also be a match, but this is ok since the search is in an ordered list.
-     *
-     * Using a mutable lambda to carry the header contribution is a pretty
-     * convoluted approach, but both the element *and* the header sizes need to
-     * be accounted for, and the latter is only available through the
-     * *position* in the index, which doesn't play so well with the std
-     * algorithms. The use of lambda + find-if is still valuable though, as it
-     * gives a clean error check if the offset n is somehow *not* in the index.
-     */
-
-    auto pos = lower - this->markers.begin();
-    const auto next_larger = [this, n, pos] (const header& rec) mutable {
-        return n <= this->addr.logical(rec.next, pos++);
-    };
-
-
-    const auto cur = std::find_if(
-            lower,
-            this->markers.end(),
-            next_larger
-    );
-
-    if (cur >= this->markers.end()) {
-        const auto msg = "seek: n = {} not found in index, end->next = {}";
-        throw std::logic_error(fmt::format(msg, n, this->markers.back().next));
-    }
-
-    const auto real_offset = this->addr.physical(n, cur - markers.begin());
+    const auto next = this->markers.find(n, this->current);
+    const auto pos = next - this->markers.begin();
+    const auto real_offset = this->addr.physical(n, pos);
     this->fp->seek(real_offset);
-    this->current = cur;
-    this->current.remaining = cur->next - real_offset;
+    this->current = cursor(next);
+    this->current.remaining = this->current->next - real_offset;
 }
 
 void tapeimage::seek(std::int64_t n) noexcept (false) {
