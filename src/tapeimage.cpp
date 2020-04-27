@@ -394,25 +394,23 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
     }
 
     /**
-     * Search for correct header in 2 phases:
-     * Phase 1: using binary search find header which is close enough to
-     * the correct one, but not later than it.
-     * Phase 2: using linear search find correct header.
+     * Look up the record containing the logical offset n in the index.
      *
+     * seek() is a pretty common operation, and experience from dlisio [1]
+     * shows that a poor algorithm here significantly slows down programs.
      *
-     * Phase 1:
-     * We pretend that there is no overhead introduced by headers. Then we can
-     * simply search for the record corresponding to 'n'.
+     * The algorithm actually makes two searches:
      *
-     * Note that binary search from std operates on headers only. Headers do
-     * not know their position in the list, thus we cannot count their
-     * contribution with this approach. That's why we need phase 2.
+     * Phase 1 is an approximating binary search that pretends the logical and
+     * phyiscal offset are the same. Since phyiscal offset >= logical offset,
+     * we know that the result is always correct or before the correct one in
+     * the ordered index.
      *
-     * Phase 2:
-     * After phase 1 we have a suspect and we are sure that correct header is
-     * current one or somewhere further down the list. So we can search for it.
-     * With expected/reasonable record sizes there shouldn't be too many hops
-     * to make a real difference in performance.
+     * Phase 2 is a linear search from [cur, end) that is aware of the
+     * logical/physical offset distinction. Because of the approximation, it
+     * should do fairly few hops.
+     *
+     * [1] https://github.com/equinor/dlisio
      */
 
     //phase 1
