@@ -413,15 +413,18 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
      * [1] https://github.com/equinor/dlisio
      */
 
-    //phase 1
-    auto pred = [&](const tapeimage::header &h, const std::int64_t &n) {
-         return h.next < n + this->zero;
+    // phase 1
+    const auto zero = this->zero;
+    auto less = [zero] (const header& h, std::int64_t n) noexcept (true) {
+         return h.next < n + zero;
     };
 
-    auto cur = std::lower_bound(this->markers.begin(),
-                                this->markers.end(),
-                                n,
-                                pred);
+    auto cur = std::lower_bound(
+        this->markers.begin(),
+        this->markers.end(),
+        n,
+        less
+    );
 
     //phase 2
     while(true) {
