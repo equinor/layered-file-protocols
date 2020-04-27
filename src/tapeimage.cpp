@@ -83,7 +83,7 @@ private:
 
     address_map addr;
     unique_lfp fp;
-    record_index markers;
+    record_index index;
     struct cursor : public record_index::const_iterator {
         using base_type = record_index::const_iterator;
         using base_type::base_type;
@@ -230,10 +230,10 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
      */
     try {
         this->addr = address_map(this->fp->tell());
-        this->markers.set(this->addr);
+        this->index.set(this->addr);
     } catch (const lfp::error&) {
         this->addr = address_map();
-        this->markers.set(this->addr);
+        this->index.set(this->addr);
     }
 
     try {
@@ -286,7 +286,7 @@ noexcept (false) {
 
 std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
     assert(this->current.remaining >= 0);
-    assert(not this->markers.empty());
+    assert(not this->index.empty());
     std::int64_t bytes_read = 0;
 
     while (true) {
@@ -344,7 +344,7 @@ void tapeimage::read_header(cursor cur) noexcept (false) {
     /*
      * The next record has not been index'd yet, so read it from disk
      */
-    if (std::next(cur) == std::end(this->markers)) {
+    if (std::next(cur) == std::end(this->index)) {
         this->read_header_from_disk();
         return;
     }
@@ -361,16 +361,16 @@ void tapeimage::read_header(cursor cur) noexcept (false) {
 
 // TODO: status instead of boolean?
 int tapeimage::eof() const noexcept (true) {
-    assert(not this->markers.empty());
+    assert(not this->index.empty());
     // TODO: consider when this says record, but physical file is EOF
     // TODO: end-of-file is an _empty_ record, i.e. two consecutive tape marks
     return this->current->type == tapeimage::file;
 }
 
 header tapeimage::read_header_from_disk() noexcept (false) {
-    assert(this->markers.empty()                    or
-           this->current     == this->markers.end() or
-           this->current + 1 == this->markers.end());
+    assert(this->index.empty()                    or
+           this->current     == this->index.end() or
+           this->current + 1 == this->index.end());
 
     std::int64_t n;
     unsigned char b[sizeof(std::uint32_t) * 3];
@@ -458,7 +458,7 @@ header tapeimage::read_header_from_disk() noexcept (false) {
         }
     }
 
-    if (this->markers.size() >= 2) {
+    if (this->index.size() >= 2) {
         /*
          * backpointer is not consistent with this header's previous - this is
          * recoverable, under the assumption it's the *back pointer* that is
@@ -470,7 +470,7 @@ header tapeimage::read_header_from_disk() noexcept (false) {
          *
          * TODO: should taint the handle, unless explicitly cleared
          */
-        const auto& back2 = *std::prev(this->markers.end(), 2);
+        const auto& back2 = *std::prev(this->index.end(), 2);
         if (head.prev != back2.next) {
             if (this->recovery) {
                 const auto msg = "file corrupt: head.prev (= {}) != "
@@ -483,7 +483,7 @@ header tapeimage::read_header_from_disk() noexcept (false) {
             this->recovery = LFP_PROTOCOL_TRYRECOVERY;
             head.prev = back2.next;
         }
-    } else if (this->recovery && !this->markers.empty()) {
+    } else if (this->recovery && !this->index.empty()) {
         /*
          * In this case we have just two headers (A and B)
          * ------------------------
@@ -502,13 +502,13 @@ header tapeimage::read_header_from_disk() noexcept (false) {
     }
 
     this->append(head);
-    return this->markers.back();
+    return this->index.back();
 }
 
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
     assert(n >= 0);
-    const auto next = this->markers.find(n, this->current);
-    const auto pos = next - this->markers.begin();
+    const auto next = this->index.find(n, this->current);
+    const auto pos = next - this->index.begin();
     const auto real_offset = this->addr.physical(n, pos);
     this->fp->seek(real_offset);
     this->current = cursor(next);
@@ -516,7 +516,7 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
 }
 
 void tapeimage::seek(std::int64_t n) noexcept (false) {
-    assert(not this->markers.empty());
+    assert(not this->index.empty());
     assert(n >= 0);
 
     if (std::numeric_limits<std::uint32_t>::max() < n)
@@ -524,8 +524,8 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
                            "support files larger than 4GB");
 
     const auto already_indexed = [this] (std::int64_t n) noexcept (true) {
-        const auto last = std::prev(this->markers.end());
-        return n <= this->addr.logical(last->next, this->markers.size() - 1);
+        const auto last = std::prev(this->index.end());
+        return n <= this->addr.logical(last->next, this->index.size() - 1);
     };
 
     if (already_indexed(n)) {
@@ -536,10 +536,10 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
      * The target is beyond what we have indexed, so chase the headers and add
      * them to the index as we go
      */
-    this->current = std::prev(this->markers.end());
+    this->current = std::prev(this->index.end());
     while (true) {
-        const auto last = std::prev(this->markers.end());
-        const auto pos = last - this->markers.begin();
+        const auto last = std::prev(this->index.end());
+        const auto pos = last - this->index.begin();
         const auto real_offset = this->addr.physical(n, pos);
         if (real_offset <= last->next) {
             this->fp->seek(real_offset);
@@ -563,22 +563,22 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 }
 
 std::int64_t tapeimage::tell() const noexcept (false) {
-    assert(not this->markers.empty());
-    const auto pos = this->current - this->markers.begin();
+    assert(not this->index.empty());
+    const auto pos = this->current - this->index.begin();
     return this->addr.logical(this->fp->tell(), pos);
 }
 
 void tapeimage::append(const header& head) noexcept (false) {
-    const auto tell = this->markers.empty()
+    const auto tell = this->index.empty()
                     ? header::size + this->addr.base()
-                    : header::size +this->markers.back().next
+                    : header::size +this->index.back().next
                     ;
     try {
-        this->markers.push_back(head);
+        this->index.push_back(head);
     } catch (...) {
         throw runtime_error("tapeimage: unable to store header");
     }
-    this->current = std::prev(this->markers.end());
+    this->current = std::prev(this->index.end());
     this->current.remaining = head.next - tell;
 }
 
