@@ -419,23 +419,42 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
          return h.next < n + zero;
     };
 
-    auto cur = std::lower_bound(
+    auto lower = std::lower_bound(
         this->markers.begin(),
         this->markers.end(),
         n,
         less
     );
 
-    //phase 2
-    while(true) {
-        if (!this->search_further(cur, n)) {
-            break;
-        }
-        ++cur;
-    }
+    // phase 2
+    /*
+     * We found the right record when record->next > n. All hits after will
+     * also be a match, but this is ok since the search is in an ordered list.
+     *
+     * Using a mutable lambda to carry the header contribution is a pretty
+     * convoluted approach, but both the element *and* the header sizes need to
+     * be accounted for, and the latter is only available through the
+     * *position* in the index, which doesn't play so well with the std
+     * algorithms. The use of lambda + find-if is still valuable though, as it
+     * gives a clean error check if the offset n is somehow *not* in the index.
+     */
+    auto overhead = this->protocol_overhead(lower);
+    const auto next_larger = [this, n, overhead] (const header& rec) mutable {
+        const auto is_larger = n + overhead <= rec.next;
+        overhead += header::size;
+        return is_larger;
+    };
 
-    // TODO: check runtime too?
-    assert(cur < this->markers.end());
+    const auto cur = std::find_if(
+            lower,
+            this->markers.end(),
+            next_larger
+    );
+
+    if (cur >= this->markers.end()) {
+        const auto msg = "seek: n = {} not found in index, end->next = {}";
+        throw std::logic_error(fmt::format(msg, n, this->markers.back().next));
+    }
 
     const auto real_offset = n + this->protocol_overhead(cur);
     this->fp->seek(real_offset);
