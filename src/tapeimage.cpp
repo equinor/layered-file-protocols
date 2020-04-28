@@ -59,6 +59,52 @@ private:
     address_map addr;
 };
 
+/**
+ *
+ * The read_head class implements parts of the abstraction of a physical file
+ * (tape) reader, which moves back and forth.
+ *
+ * It is somewhat flawed, as it is also an iterator over the record index,
+ * which will trigger undefined behaviour when trying to obtain unindexed
+ * records.
+ */
+class read_head : public record_index::const_iterator {
+public:
+
+    /*
+     * true if the current record is exhausted. If this is true, then
+     * bytes_left() == 0
+     */
+    bool exhausted() const noexcept (true);
+    std::int64_t bytes_left() const noexcept (true);
+
+    using base_type = record_index::const_iterator;
+    using base_type::base_type;
+    read_head() = default;
+    explicit read_head(const base_type& cur) : base_type(cur) {}
+
+    /*
+     * Move the read head within this record. Throws invalid_argument if n >=
+     * bytes_left
+     */
+    void move(std::int64_t n) noexcept (false);
+
+    /*
+     * Get a read head moved to the start of the next record. Behaviour is
+     * undefined if this is the last record in the file.
+     */
+    read_head next_record() const noexcept (true);
+
+    /*
+     * The position of the read head. This should correspond to the offset
+     * reported by the underlying file.
+     */
+    std::int64_t tell() const noexcept (true);
+
+// TODO: private:
+    std::int64_t remaining = 0;
+};
+
 class tapeimage : public lfp_protocol {
 public:
     tapeimage(lfp_protocol*);
@@ -84,27 +130,12 @@ private:
     address_map addr;
     unique_lfp fp;
     record_index index;
-    struct cursor : public record_index::const_iterator {
-        using base_type = record_index::const_iterator;
-        using base_type::base_type;
-        cursor() = default;
-        explicit cursor(const base_type& cur) : base_type(cur) {}
-
-        std::int64_t remaining = 0;
-    };
-
-    /*
-     * The current record - it's an iterator to be able to move between
-     * already-index'd records, and detect when the next needs to be read.
-     *
-     * When remaining == 0, the current record is exhausted.
-     */
-    cursor current;
+    read_head current;
 
     std::int64_t readinto(void* dst, std::int64_t) noexcept (false);
     void append(const header&) noexcept (false);
     header read_header_from_disk() noexcept (false);
-    void read_header(cursor) noexcept (false);
+    void read_header(read_head) noexcept (false);
     void seek_with_index(std::int64_t) noexcept (false);
 
     lfp_status recovery = LFP_OK;
@@ -216,6 +247,33 @@ void record_index::set(const address_map& m) noexcept (true) {
     this->addr = m;
 }
 
+bool read_head::exhausted() const noexcept (true) {
+    return this->remaining == 0;
+}
+
+std::int64_t read_head::bytes_left() const noexcept (true) {
+    return this->remaining;
+}
+
+void read_head::move(std::int64_t n) noexcept (false) {
+    assert(n >= 0);
+    if (this->remaining - n < 0)
+        throw std::invalid_argument("advancing read_head past end-of-record");
+
+    this->remaining -= n;
+}
+
+read_head read_head::next_record() const noexcept (true) {
+    const auto base = (*this)->next + header::size;
+    auto next = std::next(*this);
+    next.remaining = next->next - base;
+    return next;
+}
+
+std::int64_t read_head::tell() const noexcept (true) {
+    return (*this)->next - this->remaining;
+}
+
 tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
     /*
      * The real risks here is that the I/O device is *very* slow or blocked,
@@ -285,7 +343,7 @@ noexcept (false) {
 }
 
 std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
-    assert(this->current.remaining >= 0);
+    assert(this->current.bytes_left() >= 0);
     assert(not this->index.empty());
     std::int64_t bytes_read = 0;
 
@@ -293,34 +351,34 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
         if (this->eof())
             return bytes_read;
 
-        if (this->current.remaining == 0) {
+        if (this->current.exhausted()) {
             this->read_header(this->current);
 
             /* might be EOF, or even empty records, so re-start  */
             continue;
         }
 
-        assert(this->current.remaining >= 0);
+        assert(not this->current.exhausted());
         std::int64_t n;
-        const auto to_read = std::min(len, this->current.remaining);
+        const auto to_read = std::min(len, this->current.bytes_left());
         const auto err = this->fp->readinto(dst, to_read, &n);
         assert(err == LFP_OKINCOMPLETE ? (n < to_read) : true);
         assert(err == LFP_EOF ? (n < to_read) : true);
 
-        this->current.remaining -= n;
+        this->current.move(n);
         bytes_read += n;
         dst = advance(dst, n);
 
         if (err == LFP_OKINCOMPLETE)
             return bytes_read;
 
-        if (err == LFP_EOF and this->current.remaining > 0) {
+        if (err == LFP_EOF and not this->current.exhausted()) {
             const auto msg = "tapeimage: unexpected EOF when reading header "
                              "- got {} bytes";
             throw unexpected_eof(fmt::format(msg, bytes_read));
         }
 
-        if (err == LFP_EOF and this->current.remaining == 0)
+        if (err == LFP_EOF and this->current.exhausted())
             return bytes_read;
 
         assert(err == LFP_OK);
@@ -338,9 +396,9 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
     }
 }
 
-void tapeimage::read_header(cursor cur) noexcept (false) {
+void tapeimage::read_header(read_head cur) noexcept (false) {
     // TODO: Make this a runtime check?
-    assert(this->current.remaining == 0);
+    assert(this->current.bytes_left() >= 0);
     /*
      * The next record has not been index'd yet, so read it from disk
      */
@@ -353,10 +411,9 @@ void tapeimage::read_header(cursor cur) noexcept (false) {
      * The record *has* been index'd, so just reposition the underlying stream
      * and update the internal state
      */
-    const auto tell = cur->next + header::size;
-    this->fp->seek(tell);
-    this->current = std::next(cur);
-    this->current.remaining = this->current->next - tell;
+    auto next = cur.next_record();
+    this->fp->seek(next.tell());
+    this->current = next;
 }
 
 // TODO: status instead of boolean?
@@ -511,7 +568,7 @@ void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
     const auto pos = next - this->index.begin();
     const auto real_offset = this->addr.physical(n, pos);
     this->fp->seek(real_offset);
-    this->current = cursor(next);
+    this->current = read_head(next);
     this->current.remaining = this->current->next - real_offset;
 }
 
@@ -564,8 +621,10 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 
 std::int64_t tapeimage::tell() const noexcept (false) {
     assert(not this->index.empty());
+    assert(this->current.tell() == this->fp->tell());
+
     const auto pos = this->current - this->index.begin();
-    return this->addr.logical(this->fp->tell(), pos);
+    return this->addr.logical(this->current.tell(), pos);
 }
 
 void tapeimage::append(const header& head) noexcept (false) {
