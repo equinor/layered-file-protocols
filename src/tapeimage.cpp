@@ -55,6 +55,9 @@ public:
         const noexcept (false);
     void set(const address_map&) noexcept (true);
 
+    const_iterator::difference_type
+    index_of(const const_iterator&) const noexcept (true);
+
 private:
     address_map addr;
 };
@@ -171,7 +174,7 @@ record_index::find(std::int64_t n, const_iterator hint) const noexcept (false) {
      */
     assert(n >= 0);
     const auto in_hint = [this, hint] (std::int64_t n) noexcept (true) {
-        const auto pos = hint - this->begin();
+        const auto pos = this->index_of(hint);
         const auto end = this->addr.logical(hint->next, pos);
 
         if (pos == 0)
@@ -229,7 +232,7 @@ record_index::find(std::int64_t n, const_iterator hint) const noexcept (false) {
      * algorithms. The use of lambda + find-if is still valuable though, as it
      * gives a clean error check if the offset n is somehow *not* in the index.
      */
-    auto pos = lower - this->begin();
+    auto pos = this->index_of(lower);
     auto next_larger = [this, n, pos] (const header& rec) mutable {
         return n <= this->addr.logical(rec.next, pos++);
     };
@@ -245,6 +248,11 @@ record_index::find(std::int64_t n, const_iterator hint) const noexcept (false) {
 
 void record_index::set(const address_map& m) noexcept (true) {
     this->addr = m;
+}
+
+record_index::const_iterator::difference_type
+record_index::index_of(const const_iterator& itr) const noexcept (true) {
+    return itr - this->begin();
 }
 
 bool read_head::exhausted() const noexcept (true) {
@@ -565,7 +573,7 @@ header tapeimage::read_header_from_disk() noexcept (false) {
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
     assert(n >= 0);
     const auto next = this->index.find(n, this->current);
-    const auto pos = next - this->index.begin();
+    const auto pos = this->index.index_of(next);
     const auto real_offset = this->addr.physical(n, pos);
     this->fp->seek(real_offset);
     this->current = read_head(next);
@@ -596,7 +604,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     this->current = std::prev(this->index.end());
     while (true) {
         const auto last = std::prev(this->index.end());
-        const auto pos = last - this->index.begin();
+        const auto pos = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
         if (real_offset <= last->next) {
             this->fp->seek(real_offset);
@@ -623,7 +631,7 @@ std::int64_t tapeimage::tell() const noexcept (false) {
     assert(not this->index.empty());
     assert(this->current.tell() == this->fp->tell());
 
-    const auto pos = this->current - this->index.begin();
+    const auto pos = this->index.index_of(this->current);
     return this->addr.logical(this->current.tell(), pos);
 }
 
