@@ -347,6 +347,7 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
 
     try {
         this->read_header_from_disk();
+        this->current = read_head(this->index.last(), this->addr.base());
     } catch (...) {
         this->fp.release();
         throw;
@@ -455,6 +456,7 @@ void tapeimage::read_header(read_head cur) noexcept (false) {
      */
     if (cur == this->index.last()) {
         this->read_header_from_disk();
+        this->current.move(this->index.last());
         return;
     }
 
@@ -608,12 +610,6 @@ void tapeimage::read_header_from_disk() noexcept (false) {
     }
 
     this->index.append(head);
-
-    if (this->index.size() > 1) {
-        this->current.move(this->index.last());
-    } else {
-        this->current = read_head(this->index.last(), this->addr.base());
-    }
 }
 
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
@@ -674,6 +670,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 
         this->fp->seek(last->next);
         this->read_header_from_disk();
+        this->current.move(this->index.last());
     }
 }
 
