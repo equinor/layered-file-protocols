@@ -426,7 +426,7 @@ void tapeimage::read_header(read_head cur) noexcept (false) {
     /*
      * The next record has not been index'd yet, so read it from disk
      */
-    if (std::next(cur) == std::end(this->index)) {
+    if (cur == this->index.last()) {
         this->read_header_from_disk();
         return;
     }
