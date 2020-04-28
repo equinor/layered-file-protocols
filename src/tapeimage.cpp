@@ -160,7 +160,6 @@ private:
 
     std::int64_t readinto(void* dst, std::int64_t) noexcept (false);
     void read_header_from_disk() noexcept (false);
-    void seek_with_index(std::int64_t) noexcept (false);
 
     lfp_status recovery = LFP_OK;
 };
@@ -614,18 +613,6 @@ void tapeimage::read_header_from_disk() noexcept (false) {
     this->index.append(head);
 }
 
-void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
-    assert(n >= 0);
-    const auto next = this->index.find(n, this->current);
-    const auto pos  = this->index.index_of(next);
-    const auto real_offset = this->addr.physical(n, pos);
-
-    this->fp->seek(real_offset);
-    this->current.move(next);
-    assert(real_offset >= this->current.tell());
-    this->current.move(real_offset - this->current.tell());
-}
-
 void tapeimage::seek(std::int64_t n) noexcept (false) {
     assert(not this->index.empty());
     assert(n >= 0);
@@ -635,7 +622,15 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
                            "support files larger than 4GB");
 
     if (this->index.contains(n)) {
-        return this->seek_with_index(n);
+        const auto next = this->index.find(n, this->current);
+        const auto pos  = this->index.index_of(next);
+        const auto real_offset = this->addr.physical(n, pos);
+
+        this->fp->seek(real_offset);
+        this->current.move(next);
+        assert(real_offset >= this->current.tell());
+        this->current.move(real_offset - this->current.tell());
+        return;
     }
 
     /*
