@@ -53,7 +53,11 @@ class record_index : public std::vector< header > {
 public:
     const_iterator find(std::int64_t n, const_iterator hint)
         const noexcept (false);
+
     void set(const address_map&) noexcept (true);
+    void append(const header&) noexcept (false);
+
+    const_iterator last() const noexcept (true);
 
     const_iterator::difference_type
     index_of(const const_iterator&) const noexcept (true);
@@ -136,7 +140,6 @@ private:
     read_head current;
 
     std::int64_t readinto(void* dst, std::int64_t) noexcept (false);
-    void append(const header&) noexcept (false);
     void read_header_from_disk() noexcept (false);
     void read_header(read_head) noexcept (false);
     void seek_with_index(std::int64_t) noexcept (false);
@@ -248,6 +251,19 @@ record_index::find(std::int64_t n, const_iterator hint) const noexcept (false) {
 
 void record_index::set(const address_map& m) noexcept (true) {
     this->addr = m;
+}
+
+void record_index::append(const header& h) noexcept (false) {
+    try {
+        this->push_back(h);
+    } catch (...) {
+        throw runtime_error("tapeimage: unable to store header");
+    }
+}
+
+record_index::const_iterator record_index::last() const noexcept (true) {
+    assert(not this->empty());
+    return std::prev(this->end());
 }
 
 record_index::const_iterator::difference_type
@@ -435,7 +451,7 @@ int tapeimage::eof() const noexcept (true) {
 void tapeimage::read_header_from_disk() noexcept (false) {
     assert(this->index.empty()                    or
            this->current     == this->index.end() or
-           this->current + 1 == this->index.end());
+           this->current     == this->index.last());
 
     std::int64_t n;
     unsigned char b[sizeof(std::uint32_t) * 3];
@@ -566,7 +582,17 @@ void tapeimage::read_header_from_disk() noexcept (false) {
         }
     }
 
-    this->append(head);
+    this->index.append(head);
+
+    if (this->index.size() > 1) {
+        auto last = read_head(this->index.last());
+        auto prev = std::prev(last);
+        this->current = prev.next_record();
+    } else {
+        const auto base = this->addr.base() + header::size;;
+        this->current = read_head(this->index.last());
+        this->current.remaining = this->current->next - base;
+    }
 }
 
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
@@ -632,20 +658,6 @@ std::int64_t tapeimage::tell() const noexcept (false) {
 
     const auto pos = this->index.index_of(this->current);
     return this->addr.logical(this->current.tell(), pos);
-}
-
-void tapeimage::append(const header& head) noexcept (false) {
-    const auto tell = this->index.empty()
-                    ? header::size + this->addr.base()
-                    : header::size +this->index.back().next
-                    ;
-    try {
-        this->index.push_back(head);
-    } catch (...) {
-        throw runtime_error("tapeimage: unable to store header");
-    }
-    this->current = std::prev(this->index.end());
-    this->current.remaining = head.next - tell;
 }
 
 }
