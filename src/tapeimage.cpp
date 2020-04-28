@@ -118,7 +118,7 @@ public:
      */
     std::int64_t tell() const noexcept (true);
 
-// TODO: private:
+private:
     std::int64_t remaining = 0;
 };
 
