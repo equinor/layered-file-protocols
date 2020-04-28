@@ -151,7 +151,6 @@ private:
 
     std::int64_t readinto(void* dst, std::int64_t) noexcept (false);
     void read_header_from_disk() noexcept (false);
-    void read_header(read_head) noexcept (false);
     void seek_with_index(std::int64_t) noexcept (false);
 
     lfp_status recovery = LFP_OK;
@@ -404,7 +403,14 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
             return bytes_read;
 
         if (this->current.exhausted()) {
-            this->read_header(this->current);
+            if (this->current == this->index.last()) {
+                this->read_header_from_disk();
+                this->current.move(this->index.last());
+            } else {
+                const auto next = this->current.next_record();
+                this->fp->seek(next.tell());
+                this->current.move(next);
+            }
 
             /* might be EOF, or even empty records, so re-start  */
             continue;
@@ -446,27 +452,6 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
          */
         len -= n;
     }
-}
-
-void tapeimage::read_header(read_head cur) noexcept (false) {
-    // TODO: Make this a runtime check?
-    assert(this->current.bytes_left() >= 0);
-    /*
-     * The next record has not been index'd yet, so read it from disk
-     */
-    if (cur == this->index.last()) {
-        this->read_header_from_disk();
-        this->current.move(this->index.last());
-        return;
-    }
-
-    /*
-     * The record *has* been index'd, so just reposition the underlying stream
-     * and update the internal state
-     */
-    auto next = cur.next_record();
-    this->fp->seek(next.tell());
-    this->current = next;
 }
 
 // TODO: status instead of boolean?
