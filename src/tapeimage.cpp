@@ -137,7 +137,7 @@ private:
 
     std::int64_t readinto(void* dst, std::int64_t) noexcept (false);
     void append(const header&) noexcept (false);
-    header read_header_from_disk() noexcept (false);
+    void read_header_from_disk() noexcept (false);
     void read_header(read_head) noexcept (false);
     void seek_with_index(std::int64_t) noexcept (false);
 
@@ -432,7 +432,7 @@ int tapeimage::eof() const noexcept (true) {
     return this->current->type == tapeimage::file;
 }
 
-header tapeimage::read_header_from_disk() noexcept (false) {
+void tapeimage::read_header_from_disk() noexcept (false) {
     assert(this->index.empty()                    or
            this->current     == this->index.end() or
            this->current + 1 == this->index.end());
@@ -567,7 +567,6 @@ header tapeimage::read_header_from_disk() noexcept (false) {
     }
 
     this->append(head);
-    return this->index.back();
 }
 
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
