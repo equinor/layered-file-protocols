@@ -645,7 +645,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 
         if (real_offset <= last->next) {
             this->fp->seek(real_offset);
-            this->current.move(this->index.last());
+            this->current.move(last);
             this->current.move(real_offset - this->current.tell());
             break;
         }
