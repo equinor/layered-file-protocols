@@ -101,6 +101,11 @@ public:
     void move(std::int64_t n) noexcept (false);
 
     /*
+     * Move the read head to the start of the record provided
+     */
+    void move(const base_type&) noexcept (true);
+
+    /*
      * Get a read head moved to the start of the next record. Behaviour is
      * undefined if this is the last record in the file.
      */
@@ -289,6 +294,18 @@ void read_head::move(std::int64_t n) noexcept (false) {
         throw std::invalid_argument("advancing read_head past end-of-record");
 
     this->remaining -= n;
+}
+
+void read_head::move(const base_type& itr) noexcept (true) {
+    /*
+     * This is carefully implemented not to reference any this-> members, as
+     * the underlying iterator may have been invalidated by an index append.
+     * move() is the correct way to position the read_head in a new record.
+     */
+    const auto base_offset = std::prev(itr)->next + header::size;
+    read_head copy(itr);
+    copy.remaining = copy->next - base_offset;
+    *this = copy;
 }
 
 read_head read_head::next_record() const noexcept (true) {
@@ -587,9 +604,7 @@ void tapeimage::read_header_from_disk() noexcept (false) {
     this->index.append(head);
 
     if (this->index.size() > 1) {
-        auto last = read_head(this->index.last());
-        auto prev = std::prev(last);
-        this->current = prev.next_record();
+        this->current.move(this->index.last());
     } else {
         const auto base = this->addr.base() + header::size;;
         this->current = read_head(this->index.last());
@@ -600,11 +615,13 @@ void tapeimage::read_header_from_disk() noexcept (false) {
 void tapeimage::seek_with_index(std::int64_t n) noexcept (false) {
     assert(n >= 0);
     const auto next = this->index.find(n, this->current);
-    const auto pos = this->index.index_of(next);
+    const auto pos  = this->index.index_of(next);
     const auto real_offset = this->addr.physical(n, pos);
+
     this->fp->seek(real_offset);
-    this->current = read_head(next);
-    this->current.remaining = this->current->next - real_offset;
+    this->current.move(next);
+    assert(real_offset >= this->current.tell());
+    this->current.move(real_offset - this->current.tell());
 }
 
 void tapeimage::seek(std::int64_t n) noexcept (false) {
@@ -629,16 +646,17 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
      * The target is beyond what we have indexed, so chase the headers and add
      * them to the index as we go
      */
-    this->current = read_head(this->index.last());
+    this->current.move(this->index.last());
     while (true) {
         const auto last = this->index.last();
         const auto pos = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
+
         if (real_offset <= last->next) {
             this->fp->seek(real_offset);
-            this->current = read_head(last);
-            this->current.remaining = last->next - real_offset;
-            return;
+            this->current.move(this->index.last());
+            this->current.move(real_offset - this->current.tell());
+            break;
         }
 
         if (last->type == tapeimage::file) {
