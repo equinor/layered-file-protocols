@@ -81,7 +81,6 @@ private:
  */
 class read_head : public record_index::iterator {
 public:
-
     /*
      * true if the current record is exhausted. If this is true, then
      * bytes_left() == 0
@@ -192,10 +191,7 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
         if (pos == 0)
             return end > n;
 
-        const auto begin = this->addr.logical(
-                std::prev(hint)->next,
-                pos - 1
-        );
+        const auto begin = this->addr.logical(std::prev(hint)->next, pos - 1);
 
         return n > begin and n <= end;
     };
