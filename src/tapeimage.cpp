@@ -55,6 +55,11 @@ class record_index : private std::vector< header > {
 public:
     using iterator = base::const_iterator;
 
+    /*
+     * Check if the logical address offset n is already indexed. If it is, then
+     * find() will be defined, and return the correct record.
+     */
+    bool contains(std::int64_t n) const noexcept (true);
     iterator find(std::int64_t n, iterator hint) const noexcept (false);
 
     void set(const address_map&) noexcept (true);
@@ -169,6 +174,11 @@ const noexcept (true) {
 
 std::int64_t address_map::base() const noexcept (true) {
     return this->zero;
+}
+
+bool record_index::contains(std::int64_t n) const noexcept (true) {
+    const auto last = this->last();
+    return n < this->addr.logical(last->next, this->size() - 1);
 }
 
 record_index::iterator
@@ -619,13 +629,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         throw invalid_args("Too big seek offset. TIF protocol does not "
                            "support files larger than 4GB");
 
-    const auto records = this->index.size() - 1;
-    const auto already_indexed = [this, records] (std::int64_t n) noexcept (true) {
-        const auto last = this->index.last();
-        return n <= this->addr.logical(last->next, records);
-    };
-
-    if (already_indexed(n)) {
+    if (this->index.contains(n)) {
         return this->seek_with_index(n);
     }
 
