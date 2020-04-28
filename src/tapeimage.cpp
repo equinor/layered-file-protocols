@@ -119,7 +119,7 @@ public:
     std::int64_t tell() const noexcept (true);
 
 private:
-    std::int64_t remaining = 0;
+    std::int64_t remaining = -1;
 };
 
 class tapeimage : public lfp_protocol {
@@ -286,15 +286,18 @@ read_head::read_head(const base_type& b, std::int64_t base_addr) :
 {}
 
 bool read_head::exhausted() const noexcept (true) {
+    assert(this->remaining >= 0);
     return this->remaining == 0;
 }
 
 std::int64_t read_head::bytes_left() const noexcept (true) {
+    assert(this->remaining >= 0);
     return this->remaining;
 }
 
 void read_head::move(std::int64_t n) noexcept (false) {
     assert(n >= 0);
+    assert(this->remaining >= 0);
     if (this->remaining - n < 0)
         throw std::invalid_argument("advancing read_head past end-of-record");
 
@@ -302,6 +305,7 @@ void read_head::move(std::int64_t n) noexcept (false) {
 }
 
 void read_head::move(const base_type& itr) noexcept (true) {
+    assert(this->remaining >= 0);
     /*
      * This is carefully implemented not to reference any this-> members, as
      * the underlying iterator may have been invalidated by an index append.
@@ -314,6 +318,7 @@ void read_head::move(const base_type& itr) noexcept (true) {
 }
 
 read_head read_head::next_record() const noexcept (true) {
+    assert(this->remaining >= 0);
     const auto base = (*this)->next + header::size;
     auto next = std::next(*this);
     next.remaining = next->next - base;
@@ -321,6 +326,7 @@ read_head read_head::next_record() const noexcept (true) {
 }
 
 std::int64_t read_head::tell() const noexcept (true) {
+    assert(this->remaining >= 0);
     return (*this)->next - this->remaining;
 }
 
