@@ -60,6 +60,11 @@ public:
      * find() will be defined, and return the correct record.
      */
     bool contains(std::int64_t n) const noexcept (true);
+
+    /*
+     * Find the record header that contains the logical offset n. Behaviour is
+     * undefined if contains(n) is false.
+     */
     iterator find(std::int64_t n, iterator hint) const noexcept (false);
 
     void set(const address_map&) noexcept (true);
