@@ -49,18 +49,22 @@ private:
     std::int64_t zero = 0;
 };
 
-class record_index : public std::vector< header > {
+class record_index : private std::vector< header > {
+    using base = std::vector< header >;
+
 public:
-    const_iterator find(std::int64_t n, const_iterator hint)
-        const noexcept (false);
+    using iterator = base::const_iterator;
+
+    iterator find(std::int64_t n, iterator hint) const noexcept (false);
 
     void set(const address_map&) noexcept (true);
     void append(const header&) noexcept (false);
 
-    const_iterator last() const noexcept (true);
+    iterator last() const noexcept (true);
+    using base::empty;
+    using base::size;
 
-    const_iterator::difference_type
-    index_of(const const_iterator&) const noexcept (true);
+    iterator::difference_type index_of(const iterator&) const noexcept (true);
 
 private:
     address_map addr;
@@ -75,7 +79,7 @@ private:
  * which will trigger undefined behaviour when trying to obtain unindexed
  * records.
  */
-class read_head : public record_index::const_iterator {
+class read_head : public record_index::iterator {
 public:
 
     /*
@@ -85,7 +89,7 @@ public:
     bool exhausted() const noexcept (true);
     std::int64_t bytes_left() const noexcept (true);
 
-    using base_type = record_index::const_iterator;
+    using base_type = record_index::iterator;
     using base_type::base_type;
     read_head() = default;
     explicit read_head(const base_type& cur) : base_type(cur) {}
@@ -163,8 +167,8 @@ std::int64_t address_map::base() const noexcept (true) {
     return this->zero;
 }
 
-std::vector< header >::const_iterator
-record_index::find(std::int64_t n, const_iterator hint) const noexcept (false) {
+record_index::iterator
+record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
     /*
      * A real world usage pattern is a lot of small (forward) seeks still
      * within the same record. A lot of time can be saved by not looking
@@ -261,13 +265,13 @@ void record_index::append(const header& h) noexcept (false) {
     }
 }
 
-record_index::const_iterator record_index::last() const noexcept (true) {
+record_index::iterator record_index::last() const noexcept (true) {
     assert(not this->empty());
     return std::prev(this->end());
 }
 
-record_index::const_iterator::difference_type
-record_index::index_of(const const_iterator& itr) const noexcept (true) {
+record_index::iterator::difference_type
+record_index::index_of(const iterator& itr) const noexcept (true) {
     return itr - this->begin();
 }
 
@@ -449,9 +453,7 @@ int tapeimage::eof() const noexcept (true) {
 }
 
 void tapeimage::read_header_from_disk() noexcept (false) {
-    assert(this->index.empty()                    or
-           this->current     == this->index.end() or
-           this->current     == this->index.last());
+    assert(this->index.empty() or this->current == this->index.last());
 
     std::int64_t n;
     unsigned char b[sizeof(std::uint32_t) * 3];
@@ -551,7 +553,7 @@ void tapeimage::read_header_from_disk() noexcept (false) {
          *
          * TODO: should taint the handle, unless explicitly cleared
          */
-        const auto& back2 = *std::prev(this->index.end(), 2);
+        const auto& back2 = *std::prev(this->index.last());
         if (head.prev != back2.next) {
             if (this->recovery) {
                 const auto msg = "file corrupt: head.prev (= {}) != "
@@ -613,9 +615,10 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         throw invalid_args("Too big seek offset. TIF protocol does not "
                            "support files larger than 4GB");
 
-    const auto already_indexed = [this] (std::int64_t n) noexcept (true) {
-        const auto last = std::prev(this->index.end());
-        return n <= this->addr.logical(last->next, this->index.size() - 1);
+    const auto records = this->index.size() - 1;
+    const auto already_indexed = [this, records] (std::int64_t n) noexcept (true) {
+        const auto last = this->index.last();
+        return n <= this->addr.logical(last->next, records);
     };
 
     if (already_indexed(n)) {
@@ -626,14 +629,14 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
      * The target is beyond what we have indexed, so chase the headers and add
      * them to the index as we go
      */
-    this->current = std::prev(this->index.end());
+    this->current = read_head(this->index.last());
     while (true) {
-        const auto last = std::prev(this->index.end());
+        const auto last = this->index.last();
         const auto pos = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
         if (real_offset <= last->next) {
             this->fp->seek(real_offset);
-            this->current = last;
+            this->current = read_head(last);
             this->current.remaining = last->next - real_offset;
             return;
         }
