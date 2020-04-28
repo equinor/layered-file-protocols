@@ -90,9 +90,7 @@ public:
     std::int64_t bytes_left() const noexcept (true);
 
     using base_type = record_index::iterator;
-    using base_type::base_type;
     read_head() = default;
-    explicit read_head(const base_type& cur) : base_type(cur) {}
     read_head(const base_type&, std::int64_t base_addr);
 
     /*
@@ -119,6 +117,8 @@ public:
     std::int64_t tell() const noexcept (true);
 
 private:
+    explicit read_head(const base_type& cur) : base_type(cur) {}
+
     std::int64_t remaining = -1;
 };
 
