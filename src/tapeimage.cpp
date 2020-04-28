@@ -93,6 +93,7 @@ public:
     using base_type::base_type;
     read_head() = default;
     explicit read_head(const base_type& cur) : base_type(cur) {}
+    read_head(const base_type&, std::int64_t base_addr);
 
     /*
      * Move the read head within this record. Throws invalid_argument if n >=
@@ -279,6 +280,11 @@ record_index::iterator::difference_type
 record_index::index_of(const iterator& itr) const noexcept (true) {
     return itr - this->begin();
 }
+
+read_head::read_head(const base_type& b, std::int64_t base_addr) :
+    base_type(b),
+    remaining(b->next - (base_addr + header::size))
+{}
 
 bool read_head::exhausted() const noexcept (true) {
     return this->remaining == 0;
@@ -606,9 +612,7 @@ void tapeimage::read_header_from_disk() noexcept (false) {
     if (this->index.size() > 1) {
         this->current.move(this->index.last());
     } else {
-        const auto base = this->addr.base() + header::size;;
-        this->current = read_head(this->index.last());
-        this->current.remaining = this->current->next - base;
+        this->current = read_head(this->index.last(), this->addr.base());
     }
 }
 
