@@ -255,8 +255,8 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
      * gives a clean error check if the offset n is somehow *not* in the index.
      */
     auto pos = this->index_of(lower);
-    auto next_larger = [this, n, pos] (const header& rec) mutable {
-        return n <= this->addr.logical(rec.next, pos++);
+    auto next_larger = [addr, n, pos] (const header& rec) mutable {
+        return n <= addr.logical(rec.next, pos++);
     };
 
     const auto cur = std::find_if(lower, this->end(), next_larger);
