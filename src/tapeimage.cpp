@@ -203,11 +203,11 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
         const auto end = this->addr.logical(hint->next, pos);
 
         if (pos == 0)
-            return end > n;
+            return n < end;
 
         const auto begin = this->addr.logical(std::prev(hint)->next, pos - 1);
 
-        return n > begin and n <= end;
+        return n >= begin and n < end;
     };
 
     if (in_hint(n)) {
@@ -236,11 +236,11 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
 
     // phase 1
     const auto addr = this->addr;
-    auto less = [addr] (const header& h, std::int64_t n) noexcept (true) {
-        return addr.logical(h.next, 0) < n;
+    auto less = [addr] (std::int64_t n, const header& h) noexcept (true) {
+        return n < addr.logical(h.next, 0);
     };
 
-    const auto lower = std::lower_bound(this->begin(), this->end(), n, less);
+    const auto lower = std::upper_bound(this->begin(), this->end(), n, less);
 
     // phase 2
     /*
@@ -256,7 +256,7 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
      */
     auto pos = this->index_of(lower);
     auto next_larger = [addr, n, pos] (const header& rec) mutable {
-        return n <= addr.logical(rec.next, pos++);
+        return n < addr.logical(rec.next, pos++);
     };
 
     const auto cur = std::find_if(lower, this->end(), next_larger);
@@ -626,6 +626,25 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         const auto pos  = this->index.index_of(next);
         const auto real_offset = this->addr.physical(n, pos);
 
+        /*
+         * If n = 0 there's no previous, and to remain consistent with open(),
+         * the read head is *not* put at the first byte of the preceeding
+         * header. This is effectively the same as any other position.
+         */
+        if (pos > 0 and real_offset == std::prev(next)->next + header::size) {
+            /*
+             * read(n) would stop right before the next header. To make seek(n)
+             * and read(n) move the underlying tell to the same position, move
+             * the read head to the byte after the last byte in the previous
+             * record.
+             */
+            const auto preceeding = std::prev(next);
+            this->fp->seek(preceeding->next);
+            this->current.move(preceeding);
+            this->current.move(this->current.bytes_left());
+            return;
+        }
+
         this->fp->seek(real_offset);
         this->current.move(next);
         assert(real_offset >= this->current.tell());
@@ -643,9 +662,14 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         const auto pos  = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
 
-        if (real_offset <= last->next) {
+        if (real_offset == last->next) {
+            this->fp->seek(last->next);
+            this->current.move(this->current.bytes_left());
+            break;
+        }
+
+        if (real_offset < last->next) {
             this->fp->seek(real_offset);
-            this->current.move(last);
             this->current.move(real_offset - this->current.tell());
             break;
         }
@@ -667,7 +691,6 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 
 std::int64_t tapeimage::tell() const noexcept (false) {
     assert(not this->index.empty());
-    assert(this->current.tell() == this->fp->tell());
 
     const auto pos = this->index.index_of(this->current);
     return this->addr.logical(this->current.tell(), pos);
