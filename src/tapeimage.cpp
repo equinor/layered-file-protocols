@@ -231,6 +231,10 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
      * logical/physical offset distinction. Because of the approximation, it
      * should do fairly few hops.
      *
+     * The main reason for the two-phase search is that an elements' index is
+     * required to compare logical addresses to physical ones, and upper_bound
+     * is oblivious to the current item's position.
+     *
      * [1] https://github.com/equinor/dlisio
      */
 
