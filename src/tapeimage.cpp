@@ -69,6 +69,8 @@ public:
     /*
      * Find the record header that contains the logical offset n. Behaviour is
      * undefined if contains(n) is false.
+     *
+     * The hint will always be checked before the index is scanned.
      */
     iterator find(std::int64_t n, iterator hint) const noexcept (false);
 
