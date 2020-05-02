@@ -43,6 +43,11 @@ public:
      *  This function assumes the physical address within record.
      */
     std::int64_t physical(std::int64_t addr, int record) const noexcept (true);
+
+    /**
+     * Base address of the map, i.e. the first possible address. This is
+     * usually, but not guaranteed to be, zero.
+     */
     std::int64_t base() const noexcept (true);
 
 private:
