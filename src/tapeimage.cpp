@@ -189,7 +189,7 @@ std::int64_t address_map::base() const noexcept (true) {
 
 bool record_index::contains(std::int64_t n) const noexcept (true) {
     const auto last = this->last();
-    return n < this->addr.logical(last->next, this->size() - 1);
+    return n < this->addr.logical(last->next, this->index_of(last));
 }
 
 record_index::iterator
