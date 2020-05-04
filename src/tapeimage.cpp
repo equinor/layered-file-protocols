@@ -362,9 +362,8 @@ void read_head::move(const base_type& itr) noexcept (true) {
 
 read_head read_head::next_record() const noexcept (true) {
     assert(this->remaining >= 0);
-    const auto base = (*this)->next + header::size;
-    auto next = std::next(*this);
-    next.remaining = next->next - base;
+    auto next = *this;
+    next.move(std::next(*this));
     return next;
 }
 
