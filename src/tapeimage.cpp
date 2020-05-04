@@ -54,6 +54,20 @@ private:
     std::int64_t zero = 0;
 };
 
+/*
+ * The record headers already read by tapeimage, stored in an order
+ * (lower-address first fashion).
+ *
+ * A ghost node is inserted first:
+ *  { type: -1, prev: base-addr, next: base-addr }
+ *
+ *  where base address is the underlying file pointer's tell() at the time of
+ *  opening (usually zero). Very little information is stored explicitly - for
+ *  example, the position of a record is not stored, and in order to determine
+ *  where a record starts, the previous or next record's prev/next pointers
+ *  must be queried. With a special ghost node at the start of the index, no
+ *  special casing is required.
+ */
 class record_index : private std::vector< header > {
     using base = std::vector< header >;
 
@@ -221,6 +235,10 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
         return hint;
     }
 
+    /* don't consider the first ghost node as a candidate */
+    const auto begin = std::next(this->begin());
+    const auto end   = this->end();
+
     /**
      * Look up the record containing the logical offset n in the index.
      *
@@ -250,8 +268,7 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
     auto less = [addr] (std::int64_t n, const header& h) noexcept (true) {
         return n < addr.logical(h.next, 0);
     };
-
-    const auto lower = std::upper_bound(this->begin(), this->end(), n, less);
+    const auto lower = std::upper_bound(begin, end, n, less);
 
     // phase 2
     /*
@@ -270,7 +287,7 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
         return n < addr.logical(rec.next, pos++);
     };
 
-    const auto cur = std::find_if(lower, this->end(), next_larger);
+    const auto cur = std::find_if(lower, end, next_larger);
     if (cur >= this->end()) {
         const auto msg = "seek: n = {} not found in index, end->next = {}";
         throw std::logic_error(fmt::format(msg, n, this->back().next));
@@ -281,6 +298,11 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
 
 void record_index::set(const address_map& m) noexcept (true) {
     this->addr = m;
+    header ghost;
+    ghost.type = -1;
+    ghost.prev = this->addr.base();
+    ghost.next = this->addr.base();
+    this->push_back(ghost);
 }
 
 void record_index::append(const header& h) noexcept (false) {
@@ -298,12 +320,12 @@ record_index::iterator record_index::last() const noexcept (true) {
 
 record_index::iterator::difference_type
 record_index::index_of(const iterator& itr) const noexcept (true) {
-    return itr - this->begin();
+    return std::distance(std::next(this->begin()), itr);
 }
 
-read_head::read_head(const base_type& b, std::int64_t base_addr) :
+read_head::read_head(const base_type& b, std::int64_t) :
     base_type(b),
-    remaining(b->next - (base_addr + header::size))
+    remaining(0)
 {}
 
 bool read_head::exhausted() const noexcept (true) {
@@ -370,10 +392,11 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
     }
 
     this->index.set(this->addr);
+    this->current = read_head(this->index.last(), this->addr.base());
 
     try {
         this->read_header_from_disk();
-        this->current = read_head(this->index.last(), this->addr.base());
+        this->current.move(this->index.last());
     } catch (...) {
         this->fp.release();
         throw;
@@ -638,9 +661,8 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         const auto real_offset = this->addr.physical(n, pos);
 
         /*
-         * If n = 0 there's no previous, and to remain consistent with open(),
-         * the read head is *not* put at the first byte of the preceeding
-         * header. This is effectively the same as any other position.
+         * To remain consistent with open(), the read head is *not* put at the
+         * first byte of the preceeding header.
          */
         if (pos > 0 and real_offset == std::prev(next)->next + header::size) {
             /*
