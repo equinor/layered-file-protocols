@@ -365,11 +365,11 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
      */
     try {
         this->addr = address_map(this->fp->tell());
-        this->index.set(this->addr);
     } catch (const lfp::error&) {
         this->addr = address_map();
-        this->index.set(this->addr);
     }
+
+    this->index.set(this->addr);
 
     try {
         this->read_header_from_disk();
