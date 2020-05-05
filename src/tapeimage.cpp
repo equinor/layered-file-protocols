@@ -135,6 +135,11 @@ public:
     void move(const base_type&) noexcept (true);
 
     /*
+     * Skip to the end of this record. After skip(), exhausted() == true
+     */
+    void skip() noexcept (true);
+
+    /*
      * Get a read head moved to the start of the next record. Behaviour is
      * undefined if this is the last record in the file.
      */
@@ -358,6 +363,11 @@ void read_head::move(const base_type& itr) noexcept (true) {
     read_head copy(itr);
     copy.remaining = copy->next - base_offset;
     *this = copy;
+}
+
+void read_head::skip() noexcept (true) {
+    assert(this->remaining >= 0);
+    this->remaining = 0;
 }
 
 read_head read_head::next_record() const noexcept (true) {
@@ -676,9 +686,17 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         const auto pos  = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
 
+        /*
+         * When doing a cold seek(n), and n happens to be at the start of a
+         * record, stop before reading the last header. This supports the case
+         * where the header is broken, and makes cold seek() consistent with
+         * readinto() to the same byte. If the header is broken, the next read
+         * would fail anyway, but it might be that this address is seek()'d to,
+         * and a following readinto() never happens.
+         */
         if (real_offset == last->next) {
             this->fp->seek(last->next);
-            this->current.move(this->current.bytes_left());
+            this->current.skip();
             break;
         }
 
