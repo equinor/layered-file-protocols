@@ -659,24 +659,6 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         const auto pos  = this->index.index_of(next);
         const auto real_offset = this->addr.physical(n, pos);
 
-        /*
-         * To remain consistent with open(), the read head is *not* put at the
-         * first byte of the preceeding header.
-         */
-        if (pos > 0 and real_offset == std::prev(next)->next + header::size) {
-            /*
-             * read(n) would stop right before the next header. To make seek(n)
-             * and read(n) move the underlying tell to the same position, move
-             * the read head to the byte after the last byte in the previous
-             * record.
-             */
-            const auto preceeding = std::prev(next);
-            this->fp->seek(preceeding->next);
-            this->current.move(preceeding);
-            this->current.move(this->current.bytes_left());
-            return;
-        }
-
         this->fp->seek(real_offset);
         this->current.move(next);
         assert(real_offset >= this->current.tell());

@@ -454,13 +454,6 @@ TEST_CASE(
 
         err = lfp_seek(tif, 8);
         CHECK(err == LFP_OK);
-
-        lfp_protocol* inner;
-        lfp_peek(tif, &inner);
-
-        std::int64_t inner_tell;
-        lfp_tell(inner, &inner_tell);
-        CHECK(inner_tell == 20);
     }
 
     lfp_close(tif);
