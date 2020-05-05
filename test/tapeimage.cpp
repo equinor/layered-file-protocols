@@ -443,6 +443,19 @@ TEST_CASE(
         CHECK(tell == 8);
     }
 
+    SECTION("seek to header border: start of current record") {
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(tif, 12);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(tif, 8);
+        CHECK(err == LFP_OK);
+    }
+
     lfp_close(tif);
 }
 
@@ -667,49 +680,6 @@ TEST_CASE(
     CHECK_THAT(out, Equals(expected2));
 
     lfp_close(tif);
-}
-
-TEST_CASE(
-    "Error in tapeimage constructor doesn't destroy underlying file",
-    "[tapeimage][open]") {
-
-    class memfake : public lfp_protocol
-    {
-      public:
-        memfake(int *livepointer) {
-            this->livepointer = livepointer;
-            *this->livepointer += 1;
-        }
-        ~memfake() override {
-            *this->livepointer -= 1;
-        }
-
-        void close() noexcept(true) override {}
-        lfp_status readinto(
-            void *dst,
-            std::int64_t len,
-            std::int64_t *bytes_read) noexcept(true) override {
-            return LFP_RUNTIME_ERROR;
-        }
-
-        int eof() const noexcept(true) override { return 0; }
-        lfp_protocol* peel() noexcept (false) override { throw; }
-        lfp_protocol* peek() const noexcept (false) override { throw; }
-
-      private:
-        int *livepointer;
-    };
-
-    int counter = 0;
-    int* livepointer = &counter;
-    auto* mem = new memfake(livepointer);
-    CHECK(counter == 1);
-    auto* tif = lfp_tapeimage_open(mem);
-
-    CHECK(tif == nullptr);
-    CHECK(counter == 1);
-
-    lfp_close(mem);
 }
 
 TEST_CASE(
