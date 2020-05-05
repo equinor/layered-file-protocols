@@ -74,6 +74,8 @@ class record_index : private std::vector< header > {
 public:
     using iterator = base::const_iterator;
 
+    explicit record_index(address_map m) : addr(m) {}
+
     /*
      * Check if the logical address offset n is already indexed. If it is, then
      * find() will be defined, and return the correct record.
@@ -88,7 +90,6 @@ public:
      */
     iterator find(std::int64_t n, iterator hint) const noexcept (false);
 
-    void set(const address_map&) noexcept (true);
     void append(const header&) noexcept (false);
 
     iterator last() const noexcept (true);
@@ -121,7 +122,13 @@ public:
 
     using base_type = record_index::iterator;
     read_head() = default;
-    read_head(const base_type&, std::int64_t base_addr);
+
+    /*
+     * Make a read head to a ghost node, i.e. the virtual header inserted into
+     * the index *before* the first header, with its header->next pointing to
+     * the offset of the first header in the file.
+     */
+    static read_head ghost(const base_type&) noexcept (true);
 
     /*
      * Move the read head within this record. Throws invalid_argument if n >=
@@ -301,15 +308,6 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
     return cur;
 }
 
-void record_index::set(const address_map& m) noexcept (true) {
-    this->addr = m;
-    header ghost;
-    ghost.type = -1;
-    ghost.prev = this->addr.base();
-    ghost.next = this->addr.base();
-    this->push_back(ghost);
-}
-
 void record_index::append(const header& h) noexcept (false) {
     try {
         this->push_back(h);
@@ -328,10 +326,11 @@ record_index::index_of(const iterator& itr) const noexcept (true) {
     return std::distance(std::next(this->begin()), itr);
 }
 
-read_head::read_head(const base_type& b, std::int64_t) :
-    base_type(b),
-    remaining(0)
-{}
+read_head read_head::ghost(const base_type& b) noexcept (true) {
+    auto x = read_head(b);
+    x.remaining = 0;
+    return x;
+}
 
 bool read_head::exhausted() const noexcept (true) {
     assert(this->remaining >= 0);
@@ -382,15 +381,28 @@ std::int64_t read_head::tell() const noexcept (true) {
     return (*this)->next - this->remaining;
 }
 
-tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
+/*
+ * Get the tell of the underlying file if available, or a default 0.
+ */
+std::int64_t baseaddr(lfp_protocol* f) noexcept (false) {
     try {
-        this->addr = address_map(this->fp->tell());
+        return f->tell();
     } catch (const lfp::error&) {
-        this->addr = address_map();
+        return 0;
     }
+}
 
-    this->index.set(this->addr);
-    this->current = read_head(this->index.last(), this->addr.base());
+tapeimage::tapeimage(lfp_protocol* f) :
+    addr(baseaddr(f)),
+    fp(f),
+    index(this->addr)
+{
+    header ghost;
+    ghost.type = -1;
+    ghost.prev = this->addr.base();
+    ghost.next = this->addr.base();
+    this->index.append(ghost);
+    this->current = read_head::ghost(this->index.last());
 }
 
 void tapeimage::close() noexcept (false) {
