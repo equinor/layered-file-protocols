@@ -683,49 +683,6 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "Error in tapeimage constructor doesn't destroy underlying file",
-    "[tapeimage][open]") {
-
-    class memfake : public lfp_protocol
-    {
-      public:
-        memfake(int *livepointer) {
-            this->livepointer = livepointer;
-            *this->livepointer += 1;
-        }
-        ~memfake() override {
-            *this->livepointer -= 1;
-        }
-
-        void close() noexcept(true) override {}
-        lfp_status readinto(
-            void *dst,
-            std::int64_t len,
-            std::int64_t *bytes_read) noexcept(true) override {
-            return LFP_RUNTIME_ERROR;
-        }
-
-        int eof() const noexcept(true) override { return 0; }
-        lfp_protocol* peel() noexcept (false) override { throw; }
-        lfp_protocol* peek() const noexcept (false) override { throw; }
-
-      private:
-        int *livepointer;
-    };
-
-    int counter = 0;
-    int* livepointer = &counter;
-    auto* mem = new memfake(livepointer);
-    CHECK(counter == 1);
-    auto* tif = lfp_tapeimage_open(mem);
-
-    CHECK(tif == nullptr);
-    CHECK(counter == 1);
-
-    lfp_close(mem);
-}
-
-TEST_CASE(
     "Reading truncated file return expected errors",
     "[tapeimage]") {
 

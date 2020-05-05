@@ -383,17 +383,6 @@ std::int64_t read_head::tell() const noexcept (true) {
 }
 
 tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
-    /*
-     * The real risks here is that the I/O device is *very* slow or blocked,
-     * and won't yield the 12 first bytes, but instead something less. This is
-     * currently not handled here, nor in the read_header, but the chance of it
-     * happening it he real world is quite slim.
-     *
-     * TODO: Should inspect error code, and determine if there's something to
-     * do or more accurately report, rather than just 'failure'. At the end of
-     * the day, though, the only way to properly determine what's going on is
-     * to interrogate the underlying handle more thoroughly.
-     */
     try {
         this->addr = address_map(this->fp->tell());
     } catch (const lfp::error&) {
@@ -402,14 +391,6 @@ tapeimage::tapeimage(lfp_protocol* f) : fp(f) {
 
     this->index.set(this->addr);
     this->current = read_head(this->index.last(), this->addr.base());
-
-    try {
-        this->read_header_from_disk();
-        this->current.move(this->index.last());
-    } catch (...) {
-        this->fp.release();
-        throw;
-    }
 }
 
 void tapeimage::close() noexcept (false) {
