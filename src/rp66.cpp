@@ -66,7 +66,7 @@ private:
 
     std::int64_t readinto(void*, std::int64_t) noexcept (false);
     void read_header() noexcept (false);
-    void parse_header() noexcept (false);
+    void read_header_from_disk() noexcept (false);
     void append(const header&) noexcept (false);
     void seek_with_index(std::int64_t) noexcept (false);
 };
@@ -75,8 +75,8 @@ rp66::rp66(lfp_protocol* f) : fp(f) {
     /*
      * The real risk here is that the I/O device is *very* slow or blocked, and
      * won't yield the 4 first bytes, but instead something less. This is
-     * currently not handled here, nor in the parse_header, but the chance of it
-     * happening it the real world is quite slim.
+     * currently not handled here, nor in the read_header_from_disk, but the
+     * chance of it happening it the real world is quite slim.
      *
      * TODO: Should inspect error code, and determine if there's something to
      * do or more accurately report, rather than just 'failure'. At the end of
@@ -90,7 +90,7 @@ rp66::rp66(lfp_protocol* f) : fp(f) {
     }
 
     try {
-        this->parse_header();
+        this->read_header_from_disk();
     } catch (...) {
         this->fp.release();
         throw;
@@ -166,7 +166,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
 
     while (n > this->current->end_offset) {
         this->fp->seek( real_offset );
-        this->parse_header();
+        this->read_header_from_disk();
         real_offset += this->current->length;
     }
 
@@ -227,7 +227,7 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
     }
 }
 
-void rp66::parse_header() noexcept (false) {
+void rp66::read_header_from_disk() noexcept (false) {
     assert(this->markers.empty()                    or
            this->current     == this->markers.end() or
            this->current + 1 == this->markers.end());
@@ -261,7 +261,7 @@ void rp66::parse_header() noexcept (false) {
 
         default:
             throw not_implemented(
-                "rp66: unhandled error code in parse_header"
+                "rp66: unhandled error code in read_header_from_disk"
             );
     }
 
@@ -305,7 +305,7 @@ void rp66::read_header() noexcept (false) {
     assert(this->current.remaining == 0);
 
     if (std::next(this->current) == std::end(this->markers)) {
-        return this->parse_header();
+        return this->read_header_from_disk();
     }
 
     /*
