@@ -16,15 +16,12 @@ struct header {
 
     /*
      * Visible Records do not contain information about their own initial
-     * offset into the file.  That makes the mapping between offsets of the
-     * underlying bytes and the offset after Visible Envelope is removed a
-     * bit cumbersome. To make this process a bit easier, we augment the
-     * header to include offsets relative to this->zero.
-     *
-     * end_offset is the offset of the last byte contained in the current VR,
-     * relative to this->zero, as if there was no VE.
+     * offset into the file. That makes the mapping between physical- and
+     * logical- offsets rather cumbersome. Calculating the offset of a record
+     * can be quite expensive, as it's basically the sum of all previous record
+     * lengths. Thus headers are augmented to include their physical offset.
      */
-    std::int64_t end_offset = 0;
+    std::int64_t base = 0;
 
     /*
      * Reflects the *actual* number of bytes in the Visible Record Header,
@@ -144,7 +141,15 @@ int rp66::eof() const noexcept (true) {
 }
 
 std::int64_t rp66::tell() const noexcept (true) {
-    return this->current->end_offset - this->current.remaining;
+    const auto pos = this->current - this->markers.begin();
+
+    auto physical = this->current->base + this->current->length;
+    auto logical = physical
+                 - ((pos + 1 ) * header::size)
+                 - this->zero
+                 - this->current.remaining;
+
+    return logical;
 }
 
 void rp66::seek(std::int64_t n) noexcept (false) {
@@ -152,7 +157,12 @@ void rp66::seek(std::int64_t n) noexcept (false) {
     /*
      * Have we already index'd the right section? If so, use it and seek there.
      */
-    if (n <= this->markers.back().end_offset) {
+    std::int64_t logical = this->markers.back().base
+                         + this->markers.back().length
+                         - (this->markers.size() * header::size)
+                         - this->zero;
+
+    if (n <= logical) {
         return this->seek_with_index(n);
     }
     /*
@@ -161,19 +171,18 @@ void rp66::seek(std::int64_t n) noexcept (false) {
      */
 
     this->current = std::prev(this->markers.end());
-    std::int64_t real_offset = this->zero
-                             + (this->markers.size() * header::size)
-                             + this->current->end_offset;
 
-    while (n > this->current->end_offset) {
-        this->fp->seek( real_offset );
+    std::int64_t physical = this->current->base + this->current->length;
+    while (n > logical) {
+        this->fp->seek( physical );
         this->read_header_from_disk();
-        real_offset += this->current->length;
+        logical += (this->current->length - header::size);
+        physical += this->current->length;
     }
 
-    const auto remaining = this->current->end_offset - n;
-    real_offset -= remaining;
-    this->fp->seek( real_offset );
+    const auto remaining = logical - n;
+    physical -= remaining;
+    this->fp->seek( physical );
     this->current.remaining = remaining;
 }
 
@@ -289,11 +298,12 @@ void rp66::read_header_from_disk() noexcept (false) {
         throw protocol_fatal( fmt::format(msg, this->markers.size() + 1) );
     }
 
-    std::int64_t end_offset = head.length - header::size;
-    if ( !this->markers.empty() )
-        end_offset += this->markers.back().end_offset;
+    std::int64_t base = this->zero;
+    if ( !this->markers.empty() ) {
+        base = this->markers.back().base + this->markers.back().length;
+    }
 
-    head.end_offset = end_offset;
+    head.base = base;
 
     this->append(head);
     this->current = std::prev(this->markers.end());
@@ -313,29 +323,26 @@ void rp66::read_header() noexcept (false) {
      * The record *has* been index'd, so just reposition the underlying stream
      * and update the internal state
      */
-    const cursor beg = this->markers.begin();
-    const auto rec = std::distance(beg, std::next(this->current, 2));
-
-    const auto tell = (rec * header::size) + this->current->end_offset + this->zero;
+    const auto tell = this->current->base + this->current->length + header::size;
     this->fp->seek(tell);
     this->current = std::next(this->current);
     this->current.remaining = this->current->length - header::size;
 }
 
 void rp66::seek_with_index(std::int64_t n) noexcept (false) {
-    std::int64_t records = 1;
-
     auto current = this->markers.begin();
-    while ( current->end_offset < n ) {
-        records++;
+    std::int64_t logical = current->base + current->length - header::size - this->zero;
+    while ( logical < n ) {
         current++;
+        logical += (current->length - header::size);
     }
 
-    const std::int64_t real_offset = (records * header::size) + n + this->zero;
+    auto remaining = logical - n;
+    std::int64_t physical = current->base + (current->length - remaining);
 
-    this->fp->seek(real_offset);
+    this->fp->seek(physical);
     this->current = current;
-    this->current.remaining = this->current->end_offset - n;
+    this->current.remaining = remaining;
 }
 
 void rp66::append(const header& head) noexcept (false) try {
