@@ -58,7 +58,7 @@ private:
  * The record headers already read by tapeimage, stored in an order
  * (lower-address first fashion).
  *
- * A ghost node is inserted first:
+ * Two ghost nodes are inserted first:
  *  { type: -1, prev: base-addr, next: base-addr }
  *
  *  where base address is the underlying file pointer's tell() at the time of
@@ -67,6 +67,10 @@ private:
  *  where a record starts, the previous or next record's prev/next pointers
  *  must be queried. With a special ghost node at the start of the index, no
  *  special casing is required.
+ *
+ *  Two ghosts are needed to not invoke undefined behaviour when adding the
+ *  first header from the file, as prev(last) where last = ghost would then be
+ *  outside the index.
  */
 class record_index : private std::vector< header > {
     using base = std::vector< header >;
@@ -74,7 +78,7 @@ class record_index : private std::vector< header > {
 public:
     using iterator = base::const_iterator;
 
-    explicit record_index(address_map m) : addr(m) {}
+    explicit record_index(address_map m);
 
     /*
      * Check if the logical address offset n is already indexed. If it is, then
@@ -93,8 +97,9 @@ public:
     void append(const header&) noexcept (false);
 
     iterator last() const noexcept (true);
-    using base::empty;
-    using base::size;
+    std::size_t size() const noexcept (true);
+    bool empty() const noexcept (true);
+    iterator begin() const noexcept (true);
 
     iterator::difference_type index_of(const iterator&) const noexcept (true);
 
@@ -213,6 +218,15 @@ std::int64_t address_map::base() const noexcept (true) {
     return this->zero;
 }
 
+record_index::record_index(address_map m) : addr(m) {
+    header ghost;
+    ghost.type = -1;
+    ghost.prev = m.base();
+    ghost.next = m.base();
+    this->append(ghost);
+    this->append(ghost);
+}
+
 bool record_index::contains(std::int64_t n) const noexcept (true) {
     const auto last = this->last();
     return n < this->addr.logical(last->next, this->index_of(last));
@@ -247,8 +261,7 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
         return hint;
     }
 
-    /* don't consider the first ghost node as a candidate */
-    const auto begin = std::next(this->begin());
+    const auto begin = this->begin();
     const auto end   = this->end();
 
     /**
@@ -317,13 +330,25 @@ void record_index::append(const header& h) noexcept (false) {
 }
 
 record_index::iterator record_index::last() const noexcept (true) {
-    assert(not this->empty());
     return std::prev(this->end());
+}
+
+std::size_t record_index::size() const noexcept (true) {
+    return this->base::size() - 2;
+}
+
+bool record_index::empty() const noexcept (true) {
+    return this->size() == 0;
+}
+
+record_index::iterator record_index::begin() const noexcept (true) {
+    /* don't even consider the ghost nodes in [begin, end) */
+    return this->base::begin() + 2;
 }
 
 record_index::iterator::difference_type
 record_index::index_of(const iterator& itr) const noexcept (true) {
-    return std::distance(std::next(this->begin()), itr);
+    return std::distance(this->begin(), itr);
 }
 
 read_head read_head::ghost(const base_type& b) noexcept (true) {
@@ -397,11 +422,6 @@ tapeimage::tapeimage(lfp_protocol* f) :
     fp(f),
     index(this->addr)
 {
-    header ghost;
-    ghost.type = -1;
-    ghost.prev = this->addr.base();
-    ghost.next = this->addr.base();
-    this->index.append(ghost);
     this->current = read_head::ghost(this->index.last());
 }
 
@@ -447,7 +467,6 @@ noexcept (false) {
 
 std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
     assert(this->current.bytes_left() >= 0);
-    assert(not this->index.empty());
     std::int64_t bytes_read = 0;
 
     while (true) {
@@ -508,14 +527,20 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
 
 // TODO: status instead of boolean?
 int tapeimage::eof() const noexcept (true) {
-    assert(not this->index.empty());
     // TODO: consider when this says record, but physical file is EOF
     // TODO: end-of-file is an _empty_ record, i.e. two consecutive tape marks
     return this->current->type == tapeimage::file;
 }
 
 void tapeimage::read_header_from_disk() noexcept (false) {
-    assert(this->index.empty() or this->current == this->index.last());
+    try {
+        /*
+         * This method should only be called when the underlying file pointer
+         * is exactly at the start of a header
+         */
+        assert(this->index.last()->next == this->fp->tell());
+    } catch (const lfp::error&) {
+    }
 
     std::int64_t n;
     unsigned char b[sizeof(std::uint32_t) * 3];
@@ -628,7 +653,7 @@ void tapeimage::read_header_from_disk() noexcept (false) {
             this->recovery = LFP_PROTOCOL_TRYRECOVERY;
             head.prev = back2.next;
         }
-    } else if (this->recovery && !this->index.empty()) {
+    } else if (this->recovery and not this->index.empty()) {
         /*
          * In this case we have just two headers (A and B)
          * ------------------------
@@ -650,7 +675,6 @@ void tapeimage::read_header_from_disk() noexcept (false) {
 }
 
 void tapeimage::seek(std::int64_t n) noexcept (false) {
-    assert(not this->index.empty());
     assert(n >= 0);
 
     if (std::numeric_limits<std::uint32_t>::max() < n)
@@ -715,8 +739,6 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 }
 
 std::int64_t tapeimage::tell() const noexcept (false) {
-    assert(not this->index.empty());
-
     const auto pos = this->index.index_of(this->current);
     return this->addr.logical(this->current.tell(), pos);
 }
