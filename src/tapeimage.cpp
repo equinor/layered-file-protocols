@@ -58,7 +58,7 @@ private:
  * The record headers already read by tapeimage, stored in an order
  * (lower-address first fashion).
  *
- * A ghost node is inserted first:
+ * Two ghost nodes are inserted first:
  *  { type: -1, prev: base-addr, next: base-addr }
  *
  *  where base address is the underlying file pointer's tell() at the time of
@@ -67,6 +67,10 @@ private:
  *  where a record starts, the previous or next record's prev/next pointers
  *  must be queried. With a special ghost node at the start of the index, no
  *  special casing is required.
+ *
+ *  Two ghosts are needed to not invoke undefined behaviour when adding the
+ *  first header from the file, as prev(last) where last = ghost would then be
+ *  outside the index.
  */
 class record_index : private std::vector< header > {
     using base = std::vector< header >;
@@ -94,7 +98,8 @@ public:
 
     iterator last() const noexcept (true);
     using base::empty;
-    using base::size;
+    std::size_t size() const noexcept (true);
+    iterator begin() const noexcept (true);
 
     iterator::difference_type index_of(const iterator&) const noexcept (true);
 
@@ -219,6 +224,7 @@ record_index::record_index(address_map m) : addr(m) {
     ghost.prev = m.base();
     ghost.next = m.base();
     this->append(ghost);
+    this->append(ghost);
 }
 
 bool record_index::contains(std::int64_t n) const noexcept (true) {
@@ -255,8 +261,7 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
         return hint;
     }
 
-    /* don't consider the first ghost node as a candidate */
-    const auto begin = std::next(this->begin());
+    const auto begin = this->begin();
     const auto end   = this->end();
 
     /**
@@ -329,9 +334,18 @@ record_index::iterator record_index::last() const noexcept (true) {
     return std::prev(this->end());
 }
 
+std::size_t record_index::size() const noexcept (true) {
+    return this->base::size() - 2;
+}
+
+record_index::iterator record_index::begin() const noexcept (true) {
+    /* don't even consider the ghost nodes in [begin, end) */
+    return this->base::begin() + 2;
+}
+
 record_index::iterator::difference_type
 record_index::index_of(const iterator& itr) const noexcept (true) {
-    return std::distance(std::next(this->begin()), itr);
+    return std::distance(this->begin(), itr);
 }
 
 read_head read_head::ghost(const base_type& b) noexcept (true) {
@@ -518,7 +532,14 @@ int tapeimage::eof() const noexcept (true) {
 }
 
 void tapeimage::read_header_from_disk() noexcept (false) {
-    assert(this->index.empty() or this->current == this->index.last());
+    try {
+        /*
+         * This method should only be called when the underlying file pointer
+         * is exactly at the start of a header
+         */
+        assert(this->index.last()->next == this->fp->tell());
+    } catch (const lfp::error&) {
+    }
 
     std::int64_t n;
     unsigned char b[sizeof(std::uint32_t) * 3];
