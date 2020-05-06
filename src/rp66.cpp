@@ -9,6 +9,31 @@
 
 namespace lfp { namespace {
 
+struct header {
+    std::uint16_t  length;
+    unsigned char  format;
+    std::uint8_t   major;
+
+    /*
+     * Visible Records do not contain information about their own initial
+     * offset into the file.  That makes the mapping between offsets of the
+     * underlying bytes and the offset after Visible Envelope is removed a
+     * bit cumbersome. To make this process a bit easier, we augment the
+     * header to include offsets relative to this->zero.
+     *
+     * end_offset is the offset of the last byte contained in the current VR,
+     * relative to this->zero, as if there was no VE.
+     */
+    std::int64_t end_offset = 0;
+
+    /*
+     * Reflects the *actual* number of bytes in the Visible Record Header,
+     * defined here as the VE part of the VR. That is, Visible Record
+     * Length and Format Version.
+     */
+    static constexpr const int size = 4;
+};
+
 class rp66 : public lfp_protocol {
 public:
     rp66(lfp_protocol*);
@@ -27,30 +52,6 @@ public:
     lfp_protocol* peek() const noexcept (false) override;
 
 private:
-    struct header {
-        std::uint16_t  length;
-        unsigned char  format;
-        std::uint8_t   major;
-
-        /*
-         * Visible Records do not contain information about their own initial
-         * offset into the file.  That makes the mapping between offsets of the
-         * underlying bytes and the offset after Visible Envelope is removed a
-         * bit cumbersome. To make this process a bit easier, we augment the
-         * header to include offsets relative to this->zero.
-         *
-         * end_offset is the offset of the last byte contained in the current VR,
-         * relative to this->zero, as if there was no VE.
-         */
-        std::int64_t end_offset = 0;
-
-        /*
-         * Reflects the *actual* number of bytes in the Visible Record Header,
-         * defined here as the VE part of the VR. That is, Visible Record
-         * Length and Format Version.
-         */
-        static constexpr const int size = 4;
-    };
 
     unique_lfp fp;
     std::vector< header > markers;
