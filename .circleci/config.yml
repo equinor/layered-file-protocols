@@ -113,6 +113,8 @@ jobs:
   ubsan:
     docker:
       - image: ubuntu:rolling
+    environment:
+      DEBIAN_FRONTEND: noninteractive
     steps:
       - checkout
       - install_build_deps:
