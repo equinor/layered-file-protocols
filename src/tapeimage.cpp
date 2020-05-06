@@ -74,7 +74,7 @@ class record_index : private std::vector< header > {
 public:
     using iterator = base::const_iterator;
 
-    explicit record_index(address_map m) : addr(m) {}
+    explicit record_index(address_map m);
 
     /*
      * Check if the logical address offset n is already indexed. If it is, then
@@ -211,6 +211,14 @@ const noexcept (true) {
 
 std::int64_t address_map::base() const noexcept (true) {
     return this->zero;
+}
+
+record_index::record_index(address_map m) : addr(m) {
+    header ghost;
+    ghost.type = -1;
+    ghost.prev = m.base();
+    ghost.next = m.base();
+    this->append(ghost);
 }
 
 bool record_index::contains(std::int64_t n) const noexcept (true) {
@@ -397,11 +405,6 @@ tapeimage::tapeimage(lfp_protocol* f) :
     fp(f),
     index(this->addr)
 {
-    header ghost;
-    ghost.type = -1;
-    ghost.prev = this->addr.base();
-    ghost.next = this->addr.base();
-    this->index.append(ghost);
     this->current = read_head::ghost(this->index.last());
 }
 
