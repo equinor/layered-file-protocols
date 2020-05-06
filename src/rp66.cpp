@@ -31,6 +31,40 @@ struct header {
     static constexpr const int size = 4;
 };
 
+/**
+ * Address translator between physical offsets (provided by the underlying
+ * layer) and logical offsets (presented to the user).
+ */
+class address_map {
+public:
+    address_map() = default;
+    explicit address_map(std::int64_t z) : zero(z) {}
+
+    /**
+     * Get the logical address from the physical address, i.e. the one reported
+     * by rp66::tell(), in the bytestream with no interleaved headers.
+     */
+    std::int64_t logical(std::int64_t addr, int record) const noexcept (true);
+    /**
+     * Get the physical address from the logical address, i.e. the address with
+     * headers accounted for.
+     *
+     * Warning
+     * -------
+     *  This function assumes the physical address within record.
+     */
+    std::int64_t physical(std::int64_t addr, int record) const noexcept (true);
+
+    /**
+     * Base address of the map, i.e. the first possible address. This is
+     * usually, but not guaranteed to be, zero.
+     */
+    std::int64_t base() const noexcept (true);
+
+private:
+    std::int64_t zero = 0;
+};
+
 class rp66 : public lfp_protocol {
 public:
     rp66(lfp_protocol*);
@@ -49,8 +83,8 @@ public:
     lfp_protocol* peek() const noexcept (false) override;
 
 private:
-
     unique_lfp fp;
+    address_map addr;
     std::vector< header > markers;
     struct cursor : public std::vector< header >::const_iterator {
         using std::vector< header >::const_iterator::const_iterator;
@@ -60,14 +94,28 @@ private:
 
     cursor current;
 
-    std::int64_t zero;
-
     std::int64_t readinto(void*, std::int64_t) noexcept (false);
     void read_header() noexcept (false);
     void read_header_from_disk() noexcept (false);
     void append(const header&) noexcept (false);
     void seek_with_index(std::int64_t) noexcept (false);
 };
+
+std::int64_t
+address_map::logical(std::int64_t addr, int record)
+const noexcept (true) {
+    return addr - (header::size * (1 + record)) - this->zero;
+}
+
+std::int64_t
+address_map::physical(std::int64_t addr, int record)
+const noexcept (true) {
+    return addr + (header::size * (1 + record)) + this->zero;
+}
+
+std::int64_t address_map::base() const noexcept (true) {
+    return this->zero;
+}
 
 rp66::rp66(lfp_protocol* f) : fp(f) {
     /*
@@ -82,9 +130,9 @@ rp66::rp66(lfp_protocol* f) : fp(f) {
      * to interrogate the underlying handle more thoroughly.
      */
     try {
-        this->zero = this->fp->tell();
+        this->addr = address_map(this->fp->tell());
     } catch (...) {
-        this->zero = 0;
+        this->addr = address_map();
     }
 
     try {
@@ -142,14 +190,7 @@ int rp66::eof() const noexcept (true) {
 
 std::int64_t rp66::tell() const noexcept (true) {
     const auto pos = this->current - this->markers.begin();
-
-    auto physical = this->current->base + this->current->length;
-    auto logical = physical
-                 - ((pos + 1 ) * header::size)
-                 - this->zero
-                 - this->current.remaining;
-
-    return logical;
+    return this->addr.logical(this->fp->tell(), pos);
 }
 
 void rp66::seek(std::int64_t n) noexcept (false) {
@@ -157,10 +198,8 @@ void rp66::seek(std::int64_t n) noexcept (false) {
     /*
      * Have we already index'd the right section? If so, use it and seek there.
      */
-    std::int64_t logical = this->markers.back().base
-                         + this->markers.back().length
-                         - (this->markers.size() * header::size)
-                         - this->zero;
+    const auto last = this->markers.back().base + this->markers.back().length;
+    auto logical = this->addr.logical(last, this->markers.size() - 1);
 
     if (n <= logical) {
         return this->seek_with_index(n);
@@ -172,7 +211,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
 
     this->current = std::prev(this->markers.end());
 
-    std::int64_t physical = this->current->base + this->current->length;
+    std::int64_t physical = this->addr.physical(logical, this->markers.size() - 1);
     while (n > logical) {
         this->fp->seek( physical );
         this->read_header_from_disk();
@@ -298,7 +337,7 @@ void rp66::read_header_from_disk() noexcept (false) {
         throw protocol_fatal( fmt::format(msg, this->markers.size() + 1) );
     }
 
-    std::int64_t base = this->zero;
+    std::int64_t base = this->addr.base();
     if ( !this->markers.empty() ) {
         base = this->markers.back().base + this->markers.back().length;
     }
@@ -331,14 +370,14 @@ void rp66::read_header() noexcept (false) {
 
 void rp66::seek_with_index(std::int64_t n) noexcept (false) {
     auto current = this->markers.begin();
-    std::int64_t logical = current->base + current->length - header::size - this->zero;
+    std::int64_t logical = this->addr.logical(current->base + current->length, 0);
     while ( logical < n ) {
         current++;
         logical += (current->length - header::size);
     }
 
     auto remaining = logical - n;
-    std::int64_t physical = current->base + (current->length - remaining);
+    std::int64_t physical = this->addr.physical(n, current - this->markers.begin());
 
     this->fp->seek(physical);
     this->current = current;
