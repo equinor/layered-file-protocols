@@ -65,6 +65,37 @@ private:
     std::int64_t zero = 0;
 };
 
+/*
+ * The record headers already read by rp66, stored in an order
+ * (lower-address first fashion).
+ */
+class record_index : public std::vector< header > {
+    using base = std::vector< header >;
+
+public:
+    using iterator = base::const_iterator;
+
+    void set(const address_map&) noexcept (true);
+    /*
+     * Check if the logical address offset n is already indexed. If it is, then
+     * find() will be defined, and return the correct record.
+     */
+    bool contains(std::int64_t n) const noexcept (true);
+
+    /*
+     * Find the record header that contains the logical offset n. Behaviour is
+     * undefined if contains(n) is false.
+     */
+    iterator find(std::int64_t n) const noexcept (false);
+
+    iterator last() const noexcept (true);
+
+    iterator::difference_type index_of(const iterator&) const noexcept (true);
+
+private:
+    address_map addr;
+};
+
 class rp66 : public lfp_protocol {
 public:
     rp66(lfp_protocol*);
@@ -85,9 +116,12 @@ public:
 private:
     unique_lfp fp;
     address_map addr;
-    std::vector< header > markers;
-    struct cursor : public std::vector< header >::const_iterator {
-        using std::vector< header >::const_iterator::const_iterator;
+    record_index markers;
+    struct cursor : public record_index::const_iterator {
+        using base_type = record_index::const_iterator;
+        using base_type::base_type;
+        cursor() = default;
+        explicit cursor(const base_type& cur) : base_type(cur) {}
 
         std::int64_t remaining = 0;
     };
@@ -117,6 +151,41 @@ std::int64_t address_map::base() const noexcept (true) {
     return this->zero;
 }
 
+void record_index::set(const address_map& m) noexcept (true) {
+    this->addr = m;
+}
+
+bool record_index::contains(std::int64_t n) const noexcept (true) {
+    const auto last = this->last();
+    return n <= this->addr.logical(last->base + last->length, this->size());
+}
+
+record_index::iterator
+record_index::find(std::int64_t n) const noexcept (false) {
+    assert(this->contains(n));
+
+    auto cur = this->begin();
+    while (true) {
+        const auto pos = this->index_of(cur);
+        const auto off = cur->base + cur->length;
+
+        if (n <= this->addr.logical(off, pos))
+            return cur;
+
+        cur++;
+    }
+}
+
+record_index::iterator
+record_index::last() const noexcept (true) {
+    return std::prev(this->end());
+}
+
+record_index::iterator::difference_type
+record_index::index_of(const iterator& itr) const noexcept (true) {
+    return std::distance(this->begin(), itr);
+}
+
 rp66::rp66(lfp_protocol* f) : fp(f) {
     /*
      * The real risk here is that the I/O device is *very* slow or blocked, and
@@ -134,6 +203,7 @@ rp66::rp66(lfp_protocol* f) : fp(f) {
     } catch (...) {
         this->addr = address_map();
     }
+    this->markers.set(this->addr);
 
     try {
         this->read_header_from_disk();
@@ -189,7 +259,7 @@ int rp66::eof() const noexcept (true) {
 }
 
 std::int64_t rp66::tell() const noexcept (true) {
-    const auto pos = this->current - this->markers.begin();
+    const auto pos = this->markers.index_of(this->current);
     return this->addr.logical(this->fp->tell(), pos);
 }
 
@@ -198,31 +268,32 @@ void rp66::seek(std::int64_t n) noexcept (false) {
     /*
      * Have we already index'd the right section? If so, use it and seek there.
      */
-    const auto last = this->markers.back().base + this->markers.back().length;
-    auto logical = this->addr.logical(last, this->markers.size() - 1);
 
-    if (n <= logical) {
+    if (this->markers.contains(n)) {
         return this->seek_with_index(n);
     }
     /*
      * target is past the already-index'd records, so follow the headers, and
      * index them as we go
      */
+    while (true) {
+        const auto last = this->markers.last();
+        const auto pos  = this->markers.index_of(last);
+        const auto real_offset = this->addr.physical(n, pos);
+        const auto end = last->base + last->length;
 
-    this->current = std::prev(this->markers.end());
+        if (real_offset <= end) {
+            this->fp->seek(real_offset);
+            this->current = cursor(last);
+            this->current.remaining = end - real_offset;
+            return;
+        }
 
-    std::int64_t physical = this->addr.physical(logical, this->markers.size() - 1);
-    while (n > logical) {
-        this->fp->seek( physical );
+        this->fp->seek(end);
+        this->current = cursor(last);
         this->read_header_from_disk();
-        logical += (this->current->length - header::size);
-        physical += this->current->length;
+        if (this->eof()) return;
     }
-
-    const auto remaining = logical - n;
-    physical -= remaining;
-    this->fp->seek( physical );
-    this->current.remaining = remaining;
 }
 
 std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
@@ -349,7 +420,6 @@ void rp66::read_header_from_disk() noexcept (false) {
     this->current.remaining = head.length - header::size;
 }
 
-
 void rp66::read_header() noexcept (false) {
     // TODO: Make this a runtime check?
     assert(this->current.remaining == 0);
@@ -369,18 +439,13 @@ void rp66::read_header() noexcept (false) {
 }
 
 void rp66::seek_with_index(std::int64_t n) noexcept (false) {
-    auto current = this->markers.begin();
-    std::int64_t logical = this->addr.logical(current->base + current->length, 0);
-    while ( logical < n ) {
-        current++;
-        logical += (current->length - header::size);
-    }
+    const auto next = this->markers.find(n);
+    const auto pos  = this->markers.index_of(next);
+    const auto real_offset = this->addr.physical(n, pos);
+    const auto remaining = next->base + next->length - real_offset;
 
-    auto remaining = logical - n;
-    std::int64_t physical = this->addr.physical(n, current - this->markers.begin());
-
-    this->fp->seek(physical);
-    this->current = current;
+    this->fp->seek(real_offset);
+    this->current = cursor(next);
     this->current.remaining = remaining;
 }
 
