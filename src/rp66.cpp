@@ -116,7 +116,7 @@ public:
 private:
     unique_lfp fp;
     address_map addr;
-    record_index markers;
+    record_index index;
     struct cursor : public record_index::const_iterator {
         using base_type = record_index::const_iterator;
         using base_type::base_type;
@@ -203,7 +203,7 @@ rp66::rp66(lfp_protocol* f) : fp(f) {
     } catch (...) {
         this->addr = address_map();
     }
-    this->markers.set(this->addr);
+    this->index.set(this->addr);
 
     try {
         this->read_header_from_disk();
@@ -248,7 +248,7 @@ noexcept (false) {
 }
 
 int rp66::eof() const noexcept (true) {
-    assert(not this->markers.empty());
+    assert(not this->index.empty());
     /*
      * There is no trailing header information. I.e. the end of the last
      * Visible Record *should* align with EOF from the underlying file handle.
@@ -259,17 +259,17 @@ int rp66::eof() const noexcept (true) {
 }
 
 std::int64_t rp66::tell() const noexcept (true) {
-    const auto pos = this->markers.index_of(this->current);
+    const auto pos = this->index.index_of(this->current);
     return this->addr.logical(this->fp->tell(), pos);
 }
 
 void rp66::seek(std::int64_t n) noexcept (false) {
-    assert(not this->markers.empty());
+    assert(not this->index.empty());
     /*
      * Have we already index'd the right section? If so, use it and seek there.
      */
 
-    if (this->markers.contains(n)) {
+    if (this->index.contains(n)) {
         return this->seek_with_index(n);
     }
     /*
@@ -277,8 +277,8 @@ void rp66::seek(std::int64_t n) noexcept (false) {
      * index them as we go
      */
     while (true) {
-        const auto last = this->markers.last();
-        const auto pos  = this->markers.index_of(last);
+        const auto last = this->index.last();
+        const auto pos  = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
         const auto end = last->base + last->length;
 
@@ -298,7 +298,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
 
 std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
     assert(this->current.remaining >= 0);
-    assert(not this->markers.empty());
+    assert(not this->index.empty());
     std::int64_t bytes_read = 0;
 
     while (true) {
@@ -348,9 +348,9 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
 }
 
 void rp66::read_header_from_disk() noexcept (false) {
-    assert(this->markers.empty()                    or
-           this->current     == this->markers.end() or
-           this->current + 1 == this->markers.end());
+    assert(this->index.empty()                    or
+           this->current     == this->index.end() or
+           this->current + 1 == this->index.end());
 
     std::int64_t n;
     unsigned char b[header::size];
@@ -370,7 +370,7 @@ void rp66::read_header_from_disk() noexcept (false) {
              * not recorded before someone tries to read *past* the end, its
              * perfectly fine to exhaust the last VR without EOF being set.
              */
-            if (n == 0 && not this->markers.empty())
+            if (n == 0 && not this->index.empty())
                 return;
             else {
                 const auto msg = "rp66: unexpected EOF when reading header "
@@ -405,18 +405,18 @@ void rp66::read_header_from_disk() noexcept (false) {
      */
     if (head.format != 0xFF or head.major != 1) {
         const auto msg = "rp66: Incorrect format version in Visible Record {}";
-        throw protocol_fatal( fmt::format(msg, this->markers.size() + 1) );
+        throw protocol_fatal( fmt::format(msg, this->index.size() + 1) );
     }
 
     std::int64_t base = this->addr.base();
-    if ( !this->markers.empty() ) {
-        base = this->markers.back().base + this->markers.back().length;
+    if ( !this->index.empty() ) {
+        base = this->index.back().base + this->index.back().length;
     }
 
     head.base = base;
 
     this->append(head);
-    this->current = std::prev(this->markers.end());
+    this->current = std::prev(this->index.end());
     this->current.remaining = head.length - header::size;
 }
 
@@ -424,7 +424,7 @@ void rp66::read_header() noexcept (false) {
     // TODO: Make this a runtime check?
     assert(this->current.remaining == 0);
 
-    if (std::next(this->current) == std::end(this->markers)) {
+    if (std::next(this->current) == std::end(this->index)) {
         return this->read_header_from_disk();
     }
 
@@ -439,8 +439,8 @@ void rp66::read_header() noexcept (false) {
 }
 
 void rp66::seek_with_index(std::int64_t n) noexcept (false) {
-    const auto next = this->markers.find(n);
-    const auto pos  = this->markers.index_of(next);
+    const auto next = this->index.find(n);
+    const auto pos  = this->index.index_of(next);
     const auto real_offset = this->addr.physical(n, pos);
     const auto remaining = next->base + next->length - real_offset;
 
@@ -450,10 +450,10 @@ void rp66::seek_with_index(std::int64_t n) noexcept (false) {
 }
 
 void rp66::append(const header& head) noexcept (false) try {
-    const auto size = std::int64_t(this->markers.size());
+    const auto size = std::int64_t(this->index.size());
     const auto n = std::max(size - 1, std::int64_t(0));
-    this->markers.push_back(head);
-    this->current = this->markers.begin() + n;
+    this->index.push_back(head);
+    this->current = this->index.begin() + n;
 } catch (...) {
     throw runtime_error("rp66: unable to store header");
 }
