@@ -66,6 +66,7 @@ add_library(lfp
     src/cfile.cpp
     src/memfile.cpp
     src/tapeimage.cpp
+    src/rp66.cpp
 )
 add_library(lfp::lfp ALIAS lfp)
 
@@ -92,6 +93,7 @@ target_compile_options(lfp
 target_compile_definitions(lfp
     PRIVATE
         $<$<BOOL:${LFP_BIG_ENDIAN}>:IS_BIG_ENDIAN>
+        $<$<NOT:$<BOOL:${LFP_BIG_ENDIAN}>>:IS_LITTLE_ENDIAN>
 )
 
 install(
@@ -143,6 +145,7 @@ add_executable(unit-tests
     test/main.cpp
     test/memfile.cpp
     test/tapeimage.cpp
+    test/rp66.cpp
 )
 target_link_libraries(unit-tests
     lfp::lfp
