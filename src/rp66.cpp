@@ -129,7 +129,6 @@ private:
     cursor current;
 
     std::int64_t readinto(void*, std::int64_t) noexcept (false);
-    void read_header() noexcept (false);
     void read_header_from_disk() noexcept (false);
     void append(const header&) noexcept (false);
 };
@@ -312,8 +311,16 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
         if (this->eof())
             return bytes_read;
         if (this->current.remaining == 0) {
-            this->read_header();
-
+            if (this->current == this->index.last()) {
+                this->read_header_from_disk();
+            } else {
+                const auto tell = this->current->base
+                                + this->current->length
+                                + header::size;
+                this->fp->seek(tell);
+                this->current = std::next(this->current);
+                this->current.remaining = this->current->length - header::size;
+            }
             /* might be EOF, or even empty records, so re-start  */
             continue;
         }
@@ -425,24 +432,6 @@ void rp66::read_header_from_disk() noexcept (false) {
     this->append(head);
     this->current = std::prev(this->index.end());
     this->current.remaining = head.length - header::size;
-}
-
-void rp66::read_header() noexcept (false) {
-    // TODO: Make this a runtime check?
-    assert(this->current.remaining == 0);
-
-    if (std::next(this->current) == std::end(this->index)) {
-        return this->read_header_from_disk();
-    }
-
-    /*
-     * The record *has* been index'd, so just reposition the underlying stream
-     * and update the internal state
-     */
-    const auto tell = this->current->base + this->current->length + header::size;
-    this->fp->seek(tell);
-    this->current = std::next(this->current);
-    this->current.remaining = this->current->length - header::size;
 }
 
 void rp66::append(const header& head) noexcept (false) try {
