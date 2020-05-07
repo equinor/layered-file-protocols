@@ -132,7 +132,6 @@ private:
     void read_header() noexcept (false);
     void read_header_from_disk() noexcept (false);
     void append(const header&) noexcept (false);
-    void seek_with_index(std::int64_t) noexcept (false);
 };
 
 std::int64_t
@@ -270,7 +269,15 @@ void rp66::seek(std::int64_t n) noexcept (false) {
      */
 
     if (this->index.contains(n)) {
-        return this->seek_with_index(n);
+        const auto next = this->index.find(n);
+        const auto pos  = this->index.index_of(next);
+        const auto real_offset = this->addr.physical(n, pos);
+        const auto remaining = next->base + next->length - real_offset;
+
+        this->fp->seek(real_offset);
+        this->current = cursor(next);
+        this->current.remaining = remaining;
+        return;
     }
     /*
      * target is past the already-index'd records, so follow the headers, and
@@ -436,17 +443,6 @@ void rp66::read_header() noexcept (false) {
     this->fp->seek(tell);
     this->current = std::next(this->current);
     this->current.remaining = this->current->length - header::size;
-}
-
-void rp66::seek_with_index(std::int64_t n) noexcept (false) {
-    const auto next = this->index.find(n);
-    const auto pos  = this->index.index_of(next);
-    const auto real_offset = this->addr.physical(n, pos);
-    const auto remaining = next->base + next->length - real_offset;
-
-    this->fp->seek(real_offset);
-    this->current = cursor(next);
-    this->current.remaining = remaining;
 }
 
 void rp66::append(const header& head) noexcept (false) try {
