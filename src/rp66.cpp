@@ -88,6 +88,8 @@ public:
      */
     iterator find(std::int64_t n) const noexcept (false);
 
+    void append(const header& head) noexcept (false);
+
     iterator last() const noexcept (true);
 
     iterator::difference_type index_of(const iterator&) const noexcept (true);
@@ -130,7 +132,6 @@ private:
 
     std::int64_t readinto(void*, std::int64_t) noexcept (false);
     void read_header_from_disk() noexcept (false);
-    void append(const header&) noexcept (false);
 };
 
 std::int64_t
@@ -171,6 +172,14 @@ record_index::find(std::int64_t n) const noexcept (false) {
             return cur;
 
         cur++;
+    }
+}
+
+void record_index::append(const header& head) noexcept (false) {
+    try {
+        this->push_back(head);
+    } catch (...) {
+        throw runtime_error("rp66: unable to store header");
     }
 }
 
@@ -435,18 +444,9 @@ void rp66::read_header_from_disk() noexcept (false) {
 
     head.base = base;
 
-    this->append(head);
+    this->index.append(head);
     this->current = std::prev(this->index.end());
     this->current.remaining = head.length - header::size;
-}
-
-void rp66::append(const header& head) noexcept (false) try {
-    const auto size = std::int64_t(this->index.size());
-    const auto n = std::max(size - 1, std::int64_t(0));
-    this->index.push_back(head);
-    this->current = this->index.begin() + n;
-} catch (...) {
-    throw runtime_error("rp66: unable to store header");
 }
 
 }
