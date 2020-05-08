@@ -98,6 +98,64 @@ private:
     address_map addr;
 };
 
+/**
+ *
+ * The read_head class implements part of the abstraction of a physical layer.
+ * More precisely, it handles the state of the current record and the intricate
+ * details of moving back and forth between Visible Records.
+ *
+ * It is somewhat flawed, as it is also an iterator over the record index,
+ * which will trigger undefined behaviour when trying to obtain unindexed
+ * records.
+ */
+class read_head : public record_index::iterator {
+public:
+    /*
+     * true if the current record is exhausted. If this is true, then
+     * bytes_left() == 0
+     */
+    bool exhausted() const noexcept (true);
+    std::int64_t bytes_left() const noexcept (true);
+
+    using base_type = record_index::iterator;
+    read_head() = default;
+    explicit read_head(const base_type& cur) :
+        base_type(cur),
+        remaining(cur->length - header::size)
+    {}
+
+    /*
+     * Move the read head within this record. Throws invalid_argument if n >
+     * bytes_left
+     */
+    void move(std::int64_t n) noexcept (false);
+
+    /*
+     * Move the read head to the start of the record provided
+     */
+    void move(const base_type&) noexcept (true);
+
+    /*
+     * Skip to the end of this record. After skip(), exhausted() == true
+     */
+    void skip() noexcept (true);
+
+    /*
+     * Get a read head moved to the start of the next record. Behaviour is
+     * undefined if this is the last record in the file.
+     */
+    read_head next_record() const noexcept (true);
+
+    /*
+     * The position of the read head. This should correspond to the offset
+     * reported by the underlying file.
+     */
+    std::int64_t tell() const noexcept (true);
+
+private:
+    std::int64_t remaining = -1;
+};
+
 class rp66 : public lfp_protocol {
 public:
     rp66(lfp_protocol*);
@@ -119,16 +177,7 @@ private:
     unique_lfp fp;
     address_map addr;
     record_index index;
-    struct cursor : public record_index::const_iterator {
-        using base_type = record_index::const_iterator;
-        using base_type::base_type;
-        cursor() = default;
-        explicit cursor(const base_type& cur) : base_type(cur) {}
-
-        std::int64_t remaining = 0;
-    };
-
-    cursor current;
+    read_head current;
 
     std::int64_t readinto(void*, std::int64_t) noexcept (false);
     void read_header_from_disk() noexcept (false);
@@ -191,6 +240,54 @@ record_index::last() const noexcept (true) {
 record_index::iterator::difference_type
 record_index::index_of(const iterator& itr) const noexcept (true) {
     return std::distance(this->begin(), itr);
+}
+
+bool read_head::exhausted() const noexcept (true) {
+    assert(this->remaining >= 0);
+    return this->remaining == 0;
+}
+
+std::int64_t read_head::bytes_left() const noexcept (true) {
+    assert(this->remaining >= 0);
+    return this->remaining;
+}
+
+void read_head::move(std::int64_t n) noexcept (false) {
+    assert(n >= 0);
+    assert(this->remaining >= 0);
+    if (this->remaining - n < 0)
+        throw std::invalid_argument("advancing read_head past end-of-record");
+
+    this->remaining -= n;
+}
+
+void read_head::move(const base_type& itr) noexcept (true) {
+    assert(this->remaining >= 0);
+    /*
+     * This is carefully implemented not to reference any this-> members, as
+     * the underlying iterator may have been invalidated by an index append.
+     * move() is the correct way to position the read_head in a new record.
+     */
+    read_head copy(itr);
+    copy.remaining = copy->length - header::size;
+    *this = copy;
+}
+
+void read_head::skip() noexcept (true) {
+    assert(this->remaining >= 0);
+    this->remaining = 0;
+}
+
+read_head read_head::next_record() const noexcept (true) {
+    assert(this->remaining >= 0);
+    auto next = *this;
+    next.move(std::next(*this));
+    return next;
+}
+
+std::int64_t read_head::tell() const noexcept (true) {
+    assert(this->remaining >= 0);
+    return (*this)->base + (*this)->length - this->remaining;
 }
 
 rp66::rp66(lfp_protocol* f) : fp(f) {
@@ -280,18 +377,17 @@ void rp66::seek(std::int64_t n) noexcept (false) {
         const auto next = this->index.find(n);
         const auto pos  = this->index.index_of(next);
         const auto real_offset = this->addr.physical(n, pos);
-        const auto remaining = next->base + next->length - real_offset;
 
         this->fp->seek(real_offset);
-        this->current = cursor(next);
-        this->current.remaining = remaining;
+        this->current.move(next);
+        this->current.move(real_offset - this->current.tell());
         return;
     }
     /*
      * target is past the already-index'd records, so follow the headers, and
      * index them as we go
      */
-    this->current = cursor(this->index.last());
+    this->current.move(this->index.last());
     while (true) {
         const auto last = this->index.last();
         const auto pos  = this->index.index_of(last);
@@ -300,65 +396,62 @@ void rp66::seek(std::int64_t n) noexcept (false) {
 
         if (real_offset < end) {
             this->fp->seek(real_offset);
-            this->current.remaining = end - real_offset;
+            this->current.move(real_offset - this->current.tell());
             return;
         }
 
         if (real_offset == end) {
             this->fp->seek(end);
-            this->current.remaining = 0;
+            this->current.skip();
             return;
         }
 
+        this->current.skip();
         this->fp->seek(end);
-        this->current = cursor(last);
         this->read_header_from_disk();
         if (this->eof()) return;
     }
 }
 
 std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
-    assert(this->current.remaining >= 0);
+    assert(this->current.bytes_left() >= 0);
     assert(not this->index.empty());
     std::int64_t bytes_read = 0;
 
     while (true) {
         if (this->eof())
             return bytes_read;
-        if (this->current.remaining == 0) {
+        if (this->current.exhausted()) {
             if (this->current == this->index.last()) {
                 this->read_header_from_disk();
             } else {
-                const auto tell = this->current->base
-                                + this->current->length
-                                + header::size;
-                this->fp->seek(tell);
-                this->current = std::next(this->current);
-                this->current.remaining = this->current->length - header::size;
+                const auto next = this->current.next_record();
+                this->fp->seek(next.tell());
+                this->current.move(next);
             }
             /* might be EOF, or even empty records, so re-start  */
             continue;
         }
 
-        assert(this->current.remaining >= 0);
+        assert(not this->current.exhausted());
         std::int64_t n;
-        const auto to_read = std::min(len, this->current.remaining);
+        const auto to_read = std::min(len, this->current.bytes_left());
         const auto err = this->fp->readinto(dst, to_read, &n);
 
-        this->current.remaining -= n;
-        bytes_read      += n;
+        this->current.move(n);
+        bytes_read += n;
         dst = advance(dst, n);
 
         if (err == LFP_OKINCOMPLETE)
             return bytes_read;
 
-        if (err == LFP_EOF and this->current.remaining > 0) {
+        if (err == LFP_EOF and not this->current.exhausted()) {
             const auto msg = "rp66: unexpected EOF when reading record "
                              "- got {} bytes, expected there to be {} more";
-            throw unexpected_eof(fmt::format(msg, n, this->current.remaining));
+            throw unexpected_eof(fmt::format(msg, n, this->current.bytes_left()));
         }
 
-        if (err == LFP_EOF and this->current.remaining == 0)
+        if (err == LFP_EOF and this->current.exhausted())
             return bytes_read;
 
         assert(err == LFP_OK);
@@ -445,8 +538,11 @@ void rp66::read_header_from_disk() noexcept (false) {
     head.base = base;
 
     this->index.append(head);
-    this->current = std::prev(this->index.end());
-    this->current.remaining = head.length - header::size;
+    if (this->index.size() > 1) {
+        this->current.move(this->index.last());
+    } else {
+        this->current = read_head(this->index.last());
+    }
 }
 
 }
