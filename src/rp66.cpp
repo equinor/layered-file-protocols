@@ -69,7 +69,7 @@ private:
  * The record headers already read by rp66, stored in an order
  * (lower-address first fashion).
  */
-class record_index : public std::vector< header > {
+class record_index : private std::vector< header > {
     using base = std::vector< header >;
 
 public:
@@ -91,6 +91,8 @@ public:
     void append(const header& head) noexcept (false);
 
     iterator last() const noexcept (true);
+    using base::size;
+    using base::empty;
 
     iterator::difference_type index_of(const iterator&) const noexcept (true);
 
@@ -471,8 +473,8 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
 
 void rp66::read_header_from_disk() noexcept (false) {
     assert(this->index.empty()                    or
-           this->current     == this->index.end() or
-           this->current + 1 == this->index.end());
+           this->current     == this->index.last() or
+           this->current + 1 == this->index.last());
 
     std::int64_t n;
     unsigned char b[header::size];
@@ -532,7 +534,7 @@ void rp66::read_header_from_disk() noexcept (false) {
 
     std::int64_t base = this->addr.base();
     if ( !this->index.empty() ) {
-        base = this->index.back().base + this->index.back().length;
+        base = this->index.last()->base + this->index.last()->length;
     }
 
     head.base = base;
