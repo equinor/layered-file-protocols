@@ -282,6 +282,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
      * target is past the already-index'd records, so follow the headers, and
      * index them as we go
      */
+    this->current = cursor(this->index.last());
     while (true) {
         const auto last = this->index.last();
         const auto pos  = this->index.index_of(last);
@@ -290,7 +291,6 @@ void rp66::seek(std::int64_t n) noexcept (false) {
 
         if (real_offset <= end) {
             this->fp->seek(real_offset);
-            this->current = cursor(last);
             this->current.remaining = end - real_offset;
             return;
         }
