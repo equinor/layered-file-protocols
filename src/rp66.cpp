@@ -155,7 +155,7 @@ void record_index::set(const address_map& m) noexcept (true) {
 
 bool record_index::contains(std::int64_t n) const noexcept (true) {
     const auto last = this->last();
-    return n <= this->addr.logical(last->base + last->length, this->size());
+    return n < this->addr.logical(last->base + last->length, this->size());
 }
 
 record_index::iterator
@@ -167,7 +167,7 @@ record_index::find(std::int64_t n) const noexcept (false) {
         const auto pos = this->index_of(cur);
         const auto off = cur->base + cur->length;
 
-        if (n <= this->addr.logical(off, pos))
+        if (n < this->addr.logical(off, pos))
             return cur;
 
         cur++;
@@ -289,9 +289,15 @@ void rp66::seek(std::int64_t n) noexcept (false) {
         const auto real_offset = this->addr.physical(n, pos);
         const auto end = last->base + last->length;
 
-        if (real_offset <= end) {
+        if (real_offset < end) {
             this->fp->seek(real_offset);
             this->current.remaining = end - real_offset;
+            return;
+        }
+
+        if (real_offset == end) {
+            this->fp->seek(end);
+            this->current.remaining = 0;
             return;
         }
 
