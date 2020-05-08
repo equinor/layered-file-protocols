@@ -301,6 +301,107 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE(
+    "Seek and read to record boarders",
+    "[rp66]") {
+    const auto file = std::vector< unsigned char > {
+        /* Some dummy bytes to emulate zero > 0 */
+        0x10, 0x11, 0x12,
+
+        /* Visible Record 0 */
+        0x00, 0x0C,
+        0xFF, 0x01,
+
+        /* Body */
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+
+        /* Visible Record 1*/
+        0x00, 0x06,
+        0xFF, 0x01,
+
+        /* Body */
+        0x09, 0x0A,
+
+        /* broken record */
+        0x00, 0x00, 0x00, 0x00
+    };
+
+    auto* mem = lfp_memfile_openwith(file.data(), file.size());
+    CHECK(mem != nullptr);
+    /*
+     * Emulate opening rp66 at an arbitrary record by reading the first 3 dummy
+     * bytes before opening the rp66 protocol
+     */
+    auto dummy = std::vector< unsigned char >(3, 0xFF);
+    std::int64_t bytes_read = -1;
+    auto err = lfp_readinto(mem, dummy.data(), 3, &bytes_read);
+    CHECK(err == LFP_OK);
+    CHECK(bytes_read == 3);
+
+    auto* rp66 = lfp_rp66_open(mem);
+    CHECK(rp66 != nullptr);
+
+    SECTION( "seek to header border: not indexed" ) {
+        auto err = lfp_seek(rp66, 10);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(rp66, &tell);
+        CHECK(tell == 10);
+        CHECK(err == LFP_OK);
+    }
+
+    SECTION( "seek to header border: indexed" ) {
+        auto err = lfp_seek(rp66, 10);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(rp66, 0);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(rp66, 10);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(rp66, &tell);
+        CHECK(tell == 10);
+        CHECK(err == LFP_OK);
+    }
+
+    SECTION( "read to header border: not indexed" ) {
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+        CHECK(err == LFP_OK);
+        CHECK(bytes_read == 10);
+
+        std::int64_t tell;
+        err = lfp_tell(rp66, &tell);
+        CHECK(tell == 10);
+        CHECK(err == LFP_OK);
+    }
+
+    SECTION( "read to header border: indexed" ) {
+        auto err = lfp_seek(rp66, 10);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(rp66, 0);
+        CHECK(err == LFP_OK);
+
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+        CHECK(err == LFP_OK);
+        CHECK(bytes_read == 10);
+
+        std::int64_t tell;
+        err = lfp_tell(rp66, &tell);
+        CHECK(tell == 10);
+        CHECK(err == LFP_OK);
+    }
+
+    lfp_close(rp66);
+}
+
+TEST_CASE(
     "Error in rp66 constructor doesn't destroy underlying file",
     "[rp66][open]") {
 
