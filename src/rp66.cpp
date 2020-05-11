@@ -122,10 +122,13 @@ public:
 
     using base_type = record_index::iterator;
     read_head() = default;
-    explicit read_head(const base_type& cur) :
-        base_type(cur),
-        remaining(0)
-    {}
+
+    /*
+     * Make a read head to a ghost node, i.e. the virtual header inserted into
+     * the index *before* the first header, with its header->next pointing to
+     * the offset of the first header in the file.
+     */
+    static read_head ghost(const base_type&) noexcept (true);
 
     /*
      * Move the read head within this record. Throws invalid_argument if n >
@@ -156,6 +159,7 @@ public:
     std::int64_t tell() const noexcept (true);
 
 private:
+    explicit read_head(const base_type& cur) : base_type(cur) {}
     std::int64_t remaining = -1;
 };
 
@@ -275,6 +279,12 @@ record_index::index_of(const iterator& itr) const noexcept (true) {
     return std::distance(this->begin(), itr);
 }
 
+read_head read_head::ghost(const base_type& b) noexcept (true) {
+    auto x = read_head(b);
+    x.remaining = 0;
+    return x;
+}
+
 bool read_head::exhausted() const noexcept (true) {
     assert(this->remaining >= 0);
     return this->remaining == 0;
@@ -330,7 +340,7 @@ rp66::rp66(lfp_protocol* f) : fp(f) {
         this->addr = address_map();
     }
     this->index.set(this->addr);
-    this->current = read_head(this->index.last());
+    this->current = read_head::ghost(this->index.last());
 }
 
 void rp66::close() noexcept (false) {
