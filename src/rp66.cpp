@@ -75,7 +75,7 @@ class record_index : private std::vector< header > {
 public:
     using iterator = base::const_iterator;
 
-    void set(const address_map&) noexcept (true);
+    explicit record_index(address_map m);
     /*
      * Check if the logical address offset n is already indexed. If it is, then
      * find() will be defined, and return the correct record.
@@ -206,9 +206,7 @@ std::int64_t address_map::base() const noexcept (true) {
     return this->zero;
 }
 
-void record_index::set(const address_map& m) noexcept (true) {
-    this->addr = m;
-
+record_index::record_index(address_map m) : addr(m) {
     header ghost;
 
     /**
@@ -333,13 +331,19 @@ std::int64_t read_head::tell() const noexcept (true) {
     return (*this)->base + (*this)->length - this->remaining;
 }
 
-rp66::rp66(lfp_protocol* f) : fp(f) {
+std::int64_t baseaddr(lfp_protocol* f) noexcept (true) {
     try {
-        this->addr = address_map(this->fp->tell());
-    } catch (...) {
-        this->addr = address_map();
+        return f->tell();
+    } catch (const lfp::error&) {
+        return 0;
     }
-    this->index.set(this->addr);
+}
+
+rp66::rp66(lfp_protocol* f) :
+    fp(f),
+    addr(baseaddr(f)),
+    index(this->addr)
+{
     this->current = read_head::ghost(this->index.last());
 }
 
