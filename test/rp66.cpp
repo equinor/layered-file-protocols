@@ -570,6 +570,61 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "Operation past eof"
+    "[rp66][eof]") {
+
+    const auto contents = std::vector< unsigned char > {
+        0x00, 0x0C,
+        0xFF, 0x01,
+
+        /* begin body */
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        /* end body */
+    };
+
+    const auto expected1 = std::vector< unsigned char > {
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        0xFF, 0xFF // never read by lfp
+    };
+
+    std::FILE* fp = std::tmpfile();
+    std::fwrite(contents.data(), 1, contents.size(), fp);
+    std::rewind(fp);
+
+    auto* cfile = lfp_cfile(fp);
+    auto* rp66 = lfp_rp66_open(cfile);
+
+    SECTION( "Read past eof" ) {
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+
+        CHECK(bytes_read == 8);
+        CHECK(err == LFP_EOF);
+        CHECK_THAT(out, Equals(expected1));
+
+        std::int64_t tell;
+        lfp_tell(rp66, &tell);
+        CHECK(tell == 8);
+    }
+
+    SECTION( "Read past eof - after a seek past eof" ) {
+        auto err = lfp_seek(rp66, 10);
+        CHECK(err == LFP_OK);
+
+        char x = 0xFF;
+        std::int64_t bytes_read = -1;
+        err = lfp_readinto(rp66, &x, 1, &bytes_read);
+
+        CHECK(err == LFP_EOF);
+        CHECK(bytes_read == 0);
+    }
+    lfp_close(rp66);
+}
+
+TEST_CASE(
     "Trying to open protocol at end-of-file",
     "[visible envelope][rp66]") {
 
