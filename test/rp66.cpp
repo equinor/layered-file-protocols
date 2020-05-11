@@ -402,48 +402,6 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "Error in rp66 constructor doesn't destroy underlying file",
-    "[rp66][open]") {
-
-    class memfake : public lfp_protocol {
-    public:
-        memfake(int *livepointer) {
-            this->livepointer = livepointer;
-            *this->livepointer += 1;
-        }
-        ~memfake() override {
-            *this->livepointer -= 1;
-        }
-
-        void close() noexcept(true) override {}
-        lfp_status readinto(
-            void *dst,
-            std::int64_t len,
-            std::int64_t *bytes_read) noexcept(true) override {
-            return LFP_RUNTIME_ERROR;
-        }
-
-        int eof() const noexcept(true) override { return 0; }
-        lfp_protocol* peel() noexcept (false) override { throw; }
-        lfp_protocol* peek() const noexcept (false) override { throw; }
-
-        private:
-        int *livepointer;
-    };
-
-    int counter = 0;
-    int* livepointer = &counter;
-    auto* mem = new memfake(livepointer);
-    CHECK(counter == 1);
-    auto* rp66 = lfp_rp66_open(mem);
-
-    CHECK(rp66 == nullptr);
-    CHECK(counter == 1);
-
-    lfp_close(mem);
-}
-
-TEST_CASE(
     "Read sul before opening rp66",
     "[rp66][tif][open]") {
     const auto file = std::vector< unsigned char > {
@@ -638,9 +596,15 @@ TEST_CASE(
     CHECK(err == LFP_OK);
 
     auto* rp66 = lfp_rp66_open(cfile);
-    CHECK(rp66 == nullptr);
 
-    lfp_close(cfile);
+    char x = 0xFF;
+    std::int64_t bytes_read = -1;
+    err = lfp_readinto(rp66, &x, 1, &bytes_read);
+
+    CHECK(err == LFP_EOF);
+    CHECK(bytes_read == 0);
+
+    lfp_close(rp66);
 }
 
 TEST_CASE(

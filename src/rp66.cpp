@@ -324,17 +324,6 @@ std::int64_t read_head::tell() const noexcept (true) {
 }
 
 rp66::rp66(lfp_protocol* f) : fp(f) {
-    /*
-     * The real risk here is that the I/O device is *very* slow or blocked, and
-     * won't yield the 4 first bytes, but instead something less. This is
-     * currently not handled here, nor in the read_header_from_disk, but the
-     * chance of it happening it the real world is quite slim.
-     *
-     * TODO: Should inspect error code, and determine if there's something to
-     * do or more accurately report, rather than just 'failure'. At the end of
-     * the day, though, the only way to properly determine what's going on is
-     * to interrogate the underlying handle more thoroughly.
-     */
     try {
         this->addr = address_map(this->fp->tell());
     } catch (...) {
@@ -342,14 +331,6 @@ rp66::rp66(lfp_protocol* f) : fp(f) {
     }
     this->index.set(this->addr);
     this->current = read_head(this->index.last());
-
-    try {
-        this->read_header_from_disk();
-        this->current.move(this->index.last());
-    } catch (...) {
-        this->fp.release();
-        throw;
-    }
 }
 
 void rp66::close() noexcept (false) {
@@ -387,7 +368,6 @@ noexcept (false) {
 }
 
 int rp66::eof() const noexcept (true) {
-    assert(not this->index.empty());
     /*
      * There is no trailing header information. I.e. the end of the last
      * Visible Record *should* align with EOF from the underlying file handle.
@@ -403,7 +383,6 @@ std::int64_t rp66::tell() const noexcept (true) {
 }
 
 void rp66::seek(std::int64_t n) noexcept (false) {
-    assert(not this->index.empty());
     /*
      * Have we already index'd the right section? If so, use it and seek there.
      */
@@ -451,7 +430,6 @@ void rp66::seek(std::int64_t n) noexcept (false) {
 
 std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
     assert(this->current.bytes_left() >= 0);
-    assert(not this->index.empty());
     std::int64_t bytes_read = 0;
 
     while (true) {
@@ -527,7 +505,7 @@ void rp66::read_header_from_disk() noexcept (false) {
              * not recorded before someone tries to read *past* the end, its
              * perfectly fine to exhaust the last VR without EOF being set.
              */
-            if (n == 0 && not this->index.empty())
+            if (n == 0)
                 return;
             else {
                 const auto msg = "rp66: unexpected EOF when reading header "
