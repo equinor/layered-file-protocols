@@ -313,6 +313,7 @@ rp66::rp66(lfp_protocol* f) : fp(f) {
 
     try {
         this->read_header_from_disk();
+        this->current = read_head(this->index.last());
     } catch (...) {
         this->fp.release();
         throw;
@@ -412,6 +413,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
         this->fp->seek(end);
         this->read_header_from_disk();
         if (this->eof()) return;
+        this->current.move(this->index.last());
     }
 }
 
@@ -426,6 +428,7 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
         if (this->current.exhausted()) {
             if (this->current == this->index.last()) {
                 this->read_header_from_disk();
+                this->current.move(this->index.last());
             } else {
                 const auto next = this->current.next_record();
                 this->fp->seek(next.tell());
@@ -536,15 +539,9 @@ void rp66::read_header_from_disk() noexcept (false) {
     if ( !this->index.empty() ) {
         base = this->index.last()->base + this->index.last()->length;
     }
-
     head.base = base;
 
     this->index.append(head);
-    if (this->index.size() > 1) {
-        this->current.move(this->index.last());
-    } else {
-        this->current = read_head(this->index.last());
-    }
 }
 
 }
