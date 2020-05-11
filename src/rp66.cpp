@@ -91,8 +91,9 @@ public:
     void append(const header& head) noexcept (false);
 
     iterator last() const noexcept (true);
-    using base::size;
-    using base::empty;
+    std::size_t size() const noexcept (true);
+    bool empty() const noexcept (true);
+    iterator begin() const noexcept (true);
 
     iterator::difference_type index_of(const iterator&) const noexcept (true);
 
@@ -123,7 +124,7 @@ public:
     read_head() = default;
     explicit read_head(const base_type& cur) :
         base_type(cur),
-        remaining(cur->length - header::size)
+        remaining(0)
     {}
 
     /*
@@ -203,6 +204,24 @@ std::int64_t address_map::base() const noexcept (true) {
 
 void record_index::set(const address_map& m) noexcept (true) {
     this->addr = m;
+
+    header ghost;
+
+    /**
+     * "Insert" the ghost node right before the first actual header.
+     *
+     * For the ghost node to be truly invisible we need to make sure base +
+     * length == this->addr.base() as this is what the next (first actual)
+     * header uses to set it's base.
+     *
+     * The values for format and major are set so that the ghost would never be
+     * accepted as a real header.
+     */
+    ghost.length = header::size;
+    ghost.base = this->addr.base() - ghost.length;
+    ghost.format = 0x00;
+    ghost.major = 255;
+    this->append(ghost);
 }
 
 bool record_index::contains(std::int64_t n) const noexcept (true) {
@@ -237,6 +256,18 @@ void record_index::append(const header& head) noexcept (false) {
 record_index::iterator
 record_index::last() const noexcept (true) {
     return std::prev(this->end());
+}
+
+std::size_t record_index::size() const noexcept (true) {
+    return this->base::size() - 1;
+}
+
+bool record_index::empty() const noexcept (true) {
+    return this->size() == 0;
+}
+
+record_index::iterator record_index::begin() const noexcept (true) {
+    return this->base::begin() + 1;
 }
 
 record_index::iterator::difference_type
@@ -310,10 +341,11 @@ rp66::rp66(lfp_protocol* f) : fp(f) {
         this->addr = address_map();
     }
     this->index.set(this->addr);
+    this->current = read_head(this->index.last());
 
     try {
         this->read_header_from_disk();
-        this->current = read_head(this->index.last());
+        this->current.move(this->index.last());
     } catch (...) {
         this->fp.release();
         throw;
@@ -475,9 +507,7 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
 }
 
 void rp66::read_header_from_disk() noexcept (false) {
-    assert(this->index.empty()                    or
-           this->current     == this->index.last() or
-           this->current + 1 == this->index.last());
+    assert(this->current == this->index.last() and this->current.exhausted());
 
     std::int64_t n;
     unsigned char b[header::size];
