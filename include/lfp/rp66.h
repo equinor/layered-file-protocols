@@ -40,9 +40,6 @@ extern "C" {
  * position. However, it's not possible to open the protocol in the middle
  * of a record.
  *
- * Should the function fail, a nullptr is returned and it will not obtain
- * ownership over the passed protocol.
- *
  * [1] http://w3.energistics.org/RP66/V1/Toc/main.html
  */
 lfp_protocol* lfp_rp66_open(lfp_protocol*);

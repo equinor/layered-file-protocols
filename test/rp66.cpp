@@ -301,45 +301,104 @@ TEST_CASE_METHOD(
 }
 
 TEST_CASE(
-    "Error in rp66 constructor doesn't destroy underlying file",
-    "[rp66][open]") {
+    "Seek and read to record boarders",
+    "[rp66]") {
+    const auto file = std::vector< unsigned char > {
+        /* Some dummy bytes to emulate zero > 0 */
+        0x10, 0x11, 0x12,
 
-    class memfake : public lfp_protocol {
-    public:
-        memfake(int *livepointer) {
-            this->livepointer = livepointer;
-            *this->livepointer += 1;
-        }
-        ~memfake() override {
-            *this->livepointer -= 1;
-        }
+        /* Visible Record 0 */
+        0x00, 0x0C,
+        0xFF, 0x01,
 
-        void close() noexcept(true) override {}
-        lfp_status readinto(
-            void *dst,
-            std::int64_t len,
-            std::int64_t *bytes_read) noexcept(true) override {
-            return LFP_RUNTIME_ERROR;
-        }
+        /* Body */
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 
-        int eof() const noexcept(true) override { return 0; }
-        lfp_protocol* peel() noexcept (false) override { throw; }
-        lfp_protocol* peek() const noexcept (false) override { throw; }
+        /* Visible Record 1*/
+        0x00, 0x06,
+        0xFF, 0x01,
 
-        private:
-        int *livepointer;
+        /* Body */
+        0x09, 0x0A,
+
+        /* broken record */
+        0x00, 0x00, 0x00, 0x00
     };
 
-    int counter = 0;
-    int* livepointer = &counter;
-    auto* mem = new memfake(livepointer);
-    CHECK(counter == 1);
+    auto* mem = lfp_memfile_openwith(file.data(), file.size());
+    CHECK(mem != nullptr);
+    /*
+     * Emulate opening rp66 at an arbitrary record by reading the first 3 dummy
+     * bytes before opening the rp66 protocol
+     */
+    auto dummy = std::vector< unsigned char >(3, 0xFF);
+    std::int64_t bytes_read = -1;
+    auto err = lfp_readinto(mem, dummy.data(), 3, &bytes_read);
+    CHECK(err == LFP_OK);
+    CHECK(bytes_read == 3);
+
     auto* rp66 = lfp_rp66_open(mem);
+    CHECK(rp66 != nullptr);
 
-    CHECK(rp66 == nullptr);
-    CHECK(counter == 1);
+    SECTION( "seek to header border: not indexed" ) {
+        auto err = lfp_seek(rp66, 10);
+        CHECK(err == LFP_OK);
 
-    lfp_close(mem);
+        std::int64_t tell;
+        err = lfp_tell(rp66, &tell);
+        CHECK(tell == 10);
+        CHECK(err == LFP_OK);
+    }
+
+    SECTION( "seek to header border: indexed" ) {
+        auto err = lfp_seek(rp66, 10);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(rp66, 0);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(rp66, 10);
+        CHECK(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(rp66, &tell);
+        CHECK(tell == 10);
+        CHECK(err == LFP_OK);
+    }
+
+    SECTION( "read to header border: not indexed" ) {
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+        CHECK(err == LFP_OK);
+        CHECK(bytes_read == 10);
+
+        std::int64_t tell;
+        err = lfp_tell(rp66, &tell);
+        CHECK(tell == 10);
+        CHECK(err == LFP_OK);
+    }
+
+    SECTION( "read to header border: indexed" ) {
+        auto err = lfp_seek(rp66, 10);
+        CHECK(err == LFP_OK);
+
+        err = lfp_seek(rp66, 0);
+        CHECK(err == LFP_OK);
+
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+        CHECK(err == LFP_OK);
+        CHECK(bytes_read == 10);
+
+        std::int64_t tell;
+        err = lfp_tell(rp66, &tell);
+        CHECK(tell == 10);
+        CHECK(err == LFP_OK);
+    }
+
+    lfp_close(rp66);
 }
 
 TEST_CASE(
@@ -469,6 +528,61 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "Operation past eof"
+    "[rp66][eof]") {
+
+    const auto contents = std::vector< unsigned char > {
+        0x00, 0x0C,
+        0xFF, 0x01,
+
+        /* begin body */
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        /* end body */
+    };
+
+    const auto expected1 = std::vector< unsigned char > {
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        0xFF, 0xFF // never read by lfp
+    };
+
+    std::FILE* fp = std::tmpfile();
+    std::fwrite(contents.data(), 1, contents.size(), fp);
+    std::rewind(fp);
+
+    auto* cfile = lfp_cfile(fp);
+    auto* rp66 = lfp_rp66_open(cfile);
+
+    SECTION( "Read past eof" ) {
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+
+        CHECK(bytes_read == 8);
+        CHECK(err == LFP_EOF);
+        CHECK_THAT(out, Equals(expected1));
+
+        std::int64_t tell;
+        lfp_tell(rp66, &tell);
+        CHECK(tell == 8);
+    }
+
+    SECTION( "Read past eof - after a seek past eof" ) {
+        auto err = lfp_seek(rp66, 10);
+        CHECK(err == LFP_OK);
+
+        char x = 0xFF;
+        std::int64_t bytes_read = -1;
+        err = lfp_readinto(rp66, &x, 1, &bytes_read);
+
+        CHECK(err == LFP_EOF);
+        CHECK(bytes_read == 0);
+    }
+    lfp_close(rp66);
+}
+
+TEST_CASE(
     "Trying to open protocol at end-of-file",
     "[visible envelope][rp66]") {
 
@@ -482,9 +596,15 @@ TEST_CASE(
     CHECK(err == LFP_OK);
 
     auto* rp66 = lfp_rp66_open(cfile);
-    CHECK(rp66 == nullptr);
 
-    lfp_close(cfile);
+    char x = 0xFF;
+    std::int64_t bytes_read = -1;
+    err = lfp_readinto(rp66, &x, 1, &bytes_read);
+
+    CHECK(err == LFP_EOF);
+    CHECK(bytes_read == 0);
+
+    lfp_close(rp66);
 }
 
 TEST_CASE(
