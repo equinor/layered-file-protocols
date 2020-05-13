@@ -452,6 +452,7 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
         if (this->current.exhausted()) {
             if (this->current == this->index.last()) {
                 this->read_header_from_disk();
+                if (this->eof()) return bytes_read;
                 this->current.move(this->index.last());
             } else {
                 const auto next = this->current.next_record();
