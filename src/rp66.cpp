@@ -393,7 +393,7 @@ int rp66::eof() const noexcept (true) {
 
 std::int64_t rp66::tell() const noexcept (true) {
     const auto pos = this->index.index_of(this->current);
-    return this->addr.logical(this->fp->tell(), pos);
+    return this->addr.logical(this->current.tell(), pos);
 }
 
 void rp66::seek(std::int64_t n) noexcept (false) {
