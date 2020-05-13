@@ -21,7 +21,7 @@ struct header {
      * can be quite expensive, as it's basically the sum of all previous record
      * lengths. Thus headers are augmented to include their physical offset.
      */
-    std::int64_t base = 0;
+    std::int64_t offset = 0;
 
     /*
      * Reflects the *actual* number of bytes in the Visible Record Header,
@@ -220,7 +220,7 @@ record_index::record_index(address_map m) : addr(m) {
      * accepted as a real header.
      */
     ghost.length = header::size;
-    ghost.base = this->addr.base() - ghost.length;
+    ghost.offset = this->addr.base() - ghost.length;
     ghost.format = 0x00;
     ghost.major = 255;
     this->append(ghost);
@@ -228,7 +228,7 @@ record_index::record_index(address_map m) : addr(m) {
 
 bool record_index::contains(std::int64_t n) const noexcept (true) {
     const auto last = this->last();
-    return n < this->addr.logical(last->base + last->length, this->size());
+    return n < this->addr.logical(last->offset + last->length, this->size());
 }
 
 record_index::iterator
@@ -238,7 +238,7 @@ record_index::find(std::int64_t n) const noexcept (false) {
     auto cur = this->begin();
     while (true) {
         const auto pos = this->index_of(cur);
-        const auto off = cur->base + cur->length;
+        const auto off = cur->offset + cur->length;
 
         if (n < this->addr.logical(off, pos))
             return cur;
@@ -328,7 +328,7 @@ read_head read_head::next_record() const noexcept (true) {
 
 std::int64_t read_head::tell() const noexcept (true) {
     assert(this->remaining >= 0);
-    return (*this)->base + (*this)->length - this->remaining;
+    return (*this)->offset + (*this)->length - this->remaining;
 }
 
 std::int64_t baseaddr(lfp_protocol* f) noexcept (true) {
@@ -420,7 +420,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
         const auto last = this->index.last();
         const auto pos  = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
-        const auto end = last->base + last->length;
+        const auto end = last->offset + last->length;
 
         if (real_offset < end) {
             this->fp->seek(real_offset);
@@ -560,9 +560,9 @@ void rp66::read_header_from_disk() noexcept (false) {
 
     std::int64_t base = this->addr.base();
     if ( !this->index.empty() ) {
-        base = this->index.last()->base + this->index.last()->length;
+        base = this->index.last()->offset + this->index.last()->length;
     }
-    head.base = base;
+    head.offset = base;
 
     this->index.append(head);
 }
