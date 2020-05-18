@@ -545,14 +545,17 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
         if (err == LFP_OKINCOMPLETE)
             return bytes_read;
 
-        if (err == LFP_EOF and not this->current.exhausted()) {
+        if (err == LFP_EOF) {
+            /*
+             * To make record exhausted we have to read everything left in it.
+             * EOF can happen only if we did not read everything we wanted to.
+             * Thus we can't have EOF and read the full record.
+             */
+            assert(not this->current.exhausted());
             const auto msg = "rp66: unexpected EOF when reading record "
                              "- got {} bytes, expected there to be {} more";
             throw unexpected_eof(fmt::format(msg, n, this->current.bytes_left()));
         }
-
-        if (err == LFP_EOF and this->current.exhausted())
-            return bytes_read;
 
         assert(err == LFP_OK);
 
