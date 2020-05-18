@@ -62,6 +62,9 @@ TEST_CASE_METHOD(
     CHECK(err == LFP_OK);
     CHECK(nread == expected.size());
     CHECK_THAT(out, Equals(expected));
+
+    //EOF is reached
+    CHECK(lfp_eof(f));
 }
 
 TEST_CASE_METHOD(
@@ -82,6 +85,7 @@ TEST_CASE_METHOD(
     const auto err = lfp_readinto(f, out.data(), 2*out.size(), &nread);
 
     CHECK(err == LFP_EOF);
+    CHECK(lfp_eof(f));
     CHECK(nread == expected.size());
     CHECK_THAT(out, Equals(expected));
 }

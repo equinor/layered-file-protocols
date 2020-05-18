@@ -199,3 +199,33 @@ TEST_CASE_METHOD(
         CHECK_THAT(msg, Contains(">= 0"));
     }
 }
+
+
+TEST_CASE_METHOD(
+    random_cfile,
+    "Cfile eof",
+    "[cfile][eof]") {
+
+    SECTION( "eof reports after read past-end" ) {
+        std::int64_t nread = -1;
+        const auto err = lfp_readinto(f, out.data(), out.size() +1, &nread);
+
+        CHECK(err == LFP_EOF);
+        CHECK(lfp_eof(f));
+    }
+
+    SECTION( "eof not reported on read to end" ) {
+        std::int64_t nread = -1;
+        const auto err = lfp_readinto(f, out.data(), out.size(), &nread);
+
+        CHECK(err == LFP_OK);
+        CHECK(!lfp_eof(f));
+    }
+
+    SECTION( "eof not reported on seek to end" ) {
+        const auto err = lfp_seek(f, out.size());
+
+        CHECK(err == LFP_OK);
+        CHECK(!lfp_eof(f));
+    }
+}

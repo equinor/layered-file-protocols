@@ -76,6 +76,56 @@ struct random_memfile {
 }
 
 namespace {
+lfp_protocol* create_cfile_handle (std::vector< unsigned char > contents) {
+    std::FILE* fp = std::tmpfile();
+    std::fwrite(contents.data(), 1, contents.size(), fp);
+    std::rewind(fp);
+
+    return lfp_cfile(fp);
+}
+
+lfp_protocol* create_memfile_handle (std::vector< unsigned char > contents) {
+    return lfp_memfile_openwith(contents.data(),
+                                contents.size());
+}
+
+enum filehandle { CFILE, MEM };
+
+struct device {
+    /* fixture for testing on all currently possible underlying devices */
+    device() {
+
+        /* Catch doesn't like functions as parameters for Generate.
+         * Thus using enums to generate values instead.
+         */
+        handle = GENERATE(filehandle::CFILE, filehandle::MEM);
+
+        switch (handle) {
+            case CFILE : {
+                create = create_cfile_handle;
+                device_type = "cfile";
+                break;
+            }
+            case MEM : {
+                create = create_memfile_handle;
+                device_type = "mem";
+                break;
+            }
+        }
+    }
+
+    filehandle handle;
+    std::function <lfp_protocol* (std::vector< unsigned char >)> create;
+    /* inclusion of device_type information in section string makes it easy
+     * to identify what setup failed
+     */
+    std::string device_type;
+};
+
+}
+
+
+namespace {
 
 void test_split_read(random_memfile* file) {
     // +1 so that if size is 1, max is still >= min
