@@ -681,3 +681,155 @@ TEST_CASE(
         lfp_close(rp66);
     }
 }
+
+TEST_CASE_METHOD(
+    device,
+    "rp66: Reading truncated file return expected errors",
+    "[rp66]") {
+
+    SECTION( "testing on "+ device_type) {
+
+    SECTION( "truncated in header" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x0C,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+
+            0x00,
+            //oops
+        };
+
+        const auto expected = std::vector< unsigned char > {
+            0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+            0xFF, 0xFF //Last two bytes are never written by lfp
+        };
+
+        auto* inner = create(contents);
+        auto* rp66 = lfp_rp66_open(inner);
+
+        SECTION( "read" ){
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            //CHECK(bytes_read == 8);
+            auto msg = std::string(lfp_errormsg(rp66));
+            CHECK_THAT(msg, Contains("unexpected EOF"));
+            CHECK_THAT(msg, Contains("got 1 bytes"));
+
+            CHECK_THAT(out, Equals(expected));
+
+            CHECK(lfp_eof(rp66));
+        }
+
+        SECTION( "seek past data" ) {
+            test_seek_and_read(rp66, 10, LFP_UNEXPECTED_EOF, LFP_EOF);
+        }
+
+        lfp_close(rp66);
+    }
+
+    SECTION( "truncated after header" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x08,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+
+            0x00, 0x0C,
+            0xFF, 0x01,
+        };
+
+        auto* inner = create(contents);
+        auto* rp66 = lfp_rp66_open(inner);
+
+        /*SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+
+            //CHECK(err == LFP_UNEXPECTED_EOF);
+
+            std::int64_t tell;
+            lfp_tell(rp66, &tell);
+            CHECK(tell == 4);
+        }*/
+
+        SECTION( "seek to border" ) {
+            // TODO: EOF returned in memfile due to separate eof check
+            test_seek_and_read(rp66, 4, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek in declared data" ) {
+            // TODO: memfile
+            test_seek_and_read(rp66, 10, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek past declared data" ) {
+            // TODO: memfile
+            test_seek_and_read(rp66, 100, LFP_OK, LFP_EOF, this);
+        }
+
+        lfp_close(rp66);
+    }
+
+    SECTION( "truncated in data" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x0C,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+            //oops
+        };
+
+        const auto expected = std::vector< unsigned char > {
+            0x01, 0x02, 0x03, 0x04,
+            0xFF, 0xFF, 0xFF, 0xFF,
+        };
+
+
+        auto* inner = create(contents);
+        auto* rp66 = lfp_rp66_open(inner);
+
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(8, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(rp66, out.data(), 8, &bytes_read);
+
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            //CHECK(bytes_read == 4);
+            auto msg = std::string(lfp_errormsg(rp66));
+            CHECK_THAT(msg, Contains("unexpected EOF"));
+            CHECK_THAT(msg, Contains("got 4 bytes"));
+
+            CHECK_THAT(out, Equals(expected));
+
+            CHECK(lfp_eof(rp66));
+        }
+
+        SECTION( "seek in data" ) {
+            test_seek_and_read(rp66, 3, LFP_OK);
+        }
+
+        // TODO: memfile for all the tests
+        SECTION( "seek to border" ) {
+            test_seek_and_read(rp66, 4, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek into declared data" ) {
+            test_seek_and_read(rp66, 6, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek past declared data" ) {
+            test_seek_and_read(rp66, 100, LFP_OK, LFP_EOF, this);
+        }
+
+        lfp_close(rp66);
+    }
+
+    }
+}

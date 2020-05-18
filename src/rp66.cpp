@@ -588,7 +588,7 @@ void rp66::read_header_from_disk() noexcept (false) {
             else {
                 const auto msg = "rp66: unexpected EOF when reading header "
                                  "- got {} bytes";
-                throw protocol_fatal(fmt::format(msg, n));
+                throw unexpected_eof(fmt::format(msg, n));
             }
 
 
