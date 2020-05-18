@@ -2,11 +2,13 @@
 #define LFP_TEST_UTILS_HPP
 
 #include <memory>
+#include <cstring>
 
 #include <catch2/catch.hpp>
 
 #include <lfp/lfp.h>
 #include <lfp/memfile.h>
+#include <lfp/protocol.hpp>
 
 namespace {
 
@@ -228,5 +230,57 @@ void test_seek_and_read(lfp_protocol* outer, int seek_to, int seek_expected,
 
 }
 
+namespace {
+    /* We do not have a device right now that can be blocked */
+    /* So artificially create a situation where only some bytes are available*/
+    class blockedpipe : public lfp_protocol
+    {
+      public:
+        blockedpipe(std::vector< unsigned char > d, int frombyte) :
+            data(d),
+            blocked_from(frombyte)
+        {
+            assert(this->blocked_from < this->data.size());
+        }
+
+        void close() noexcept(true) override {}
+        lfp_status readinto(
+            void *dst,
+            std::int64_t len,
+            std::int64_t *bytes_read) noexcept(true) override
+        {
+            auto read = this->pos + len > blocked_from
+                        ? blocked_from - this->pos
+                        : len;
+            *bytes_read = read;
+            std::memcpy(dst, this->data.data() + this->pos, read);
+            this->pos += read;
+
+            return read == len ? LFP_OK : LFP_OKINCOMPLETE;
+        }
+
+        int eof() const noexcept(true) override { return 0; }
+
+        void seek(std::int64_t n) noexcept (false) {
+            assert(n < this->data.size());
+            if (n > blocked_from)
+                this->pos = blocked_from; //subjet to a change
+            else
+                this->pos = n;
+        }
+
+        std::int64_t tell() const noexcept (false) {
+            return this->pos;
+        }
+
+        lfp_protocol* peel() noexcept (false) override { throw; }
+        lfp_protocol* peek() const noexcept (false) override { throw; }
+
+      private:
+        std::int64_t pos = 0;
+        int blocked_from;
+        std::vector< unsigned char > data;
+    };
+}
 
 #endif //LFP_TEST_UTILS_HPP

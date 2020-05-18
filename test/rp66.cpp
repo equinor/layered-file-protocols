@@ -624,3 +624,60 @@ TEST_CASE(
     auto err = lfp_close(outer);
     CHECK(err == LFP_OK);
 }
+
+TEST_CASE(
+    "Blocked inner layer is processed correctly in rp66",
+    "[rp66][blockedpipe]") {
+
+    std::vector< unsigned char > data = {
+        0x00, 0x40, 0xFF, 0x01,
+
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C,
+        0x0D, 0x0E, 0x0F, 0x10,
+    };
+
+    SECTION( "incomplete in header" ) {
+
+        auto* blocked = new blockedpipe(data, 3);
+        auto* rp66 = lfp_rp66_open(blocked);
+
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(rp66, out.data(), 16, &bytes_read);
+
+        // TODO: questionable. There was never recovery in the first place
+        // incomplete would make more sense
+        CHECK(err == LFP_PROTOCOL_FAILEDRECOVERY);
+        //CHECK(bytes_read == 0);
+
+        lfp_close(rp66);
+    }
+
+    SECTION( "incomplete in data" ) {
+        auto* blocked = new blockedpipe(data, 10);
+        auto* rp66 = lfp_rp66_open(blocked);
+
+        SECTION ("read") {
+            auto out = std::vector< unsigned char >(12, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(rp66, out.data(), 12, &bytes_read);
+
+            CHECK(err == LFP_OKINCOMPLETE);
+            CHECK(bytes_read == 6);
+
+            const auto expected = std::vector< unsigned char > {
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF //never written
+            };
+            CHECK_THAT(out, Equals(expected));
+        }
+
+        SECTION ("seek") {
+            test_seek_and_read(rp66, 12, LFP_OKINCOMPLETE);
+        }
+
+        lfp_close(rp66);
+    }
+}
