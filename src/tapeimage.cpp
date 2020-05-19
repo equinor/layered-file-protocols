@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <ciso646>
 #include <cassert>
 #include <cstdint>
 #include <cstring>

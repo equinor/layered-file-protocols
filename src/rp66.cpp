@@ -1,4 +1,5 @@
 #include <cassert>
+#include <ciso646>
 #include <limits>
 #include <vector>
 
