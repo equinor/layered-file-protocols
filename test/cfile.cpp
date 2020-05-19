@@ -1,3 +1,5 @@
+#include <ciso646>
+
 #include <catch2/catch.hpp>
 
 #include <lfp/tapeimage.h>
