@@ -921,6 +921,120 @@ TEST_CASE(
     lfp_close(tif);
 }
 
+TEST_CASE_METHOD(
+    device,
+    "tapeimage: Empty record",
+    "[tapeimage]") {
+
+    SECTION( "run on device "+device_type ) {
+
+    SECTION( "FILE tapemark at the beginning" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x0C, 0x00, 0x00, 0x00,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x1C, 0x00, 0x00, 0x00,
+
+            0x01, 0x02, 0x03, 0x04,
+
+            0x01, 0x00, 0x00, 0x00,
+            0x0C, 0x00, 0x00, 0x00,
+            0x28, 0x00, 0x00, 0x00,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(4, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 4, &bytes_read);
+
+            CHECK(err == LFP_EOF);
+            CHECK(bytes_read == 0);
+        }
+
+        SECTION( "seek ") {
+            test_seek_and_read(tif, 2, LFP_EOF);
+        }
+
+        lfp_close(tif);
+    }
+
+    SECTION( "empty record in the middle" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x10, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x1C, 0x00, 0x00, 0x00,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x10, 0x00, 0x00, 0x00,
+            0x2C, 0x00, 0x00, 0x00,
+
+            0x4D, 0x41, 0x52, 0x4B,
+
+            0x01, 0x00, 0x00, 0x00,
+            0x1C, 0x00, 0x00, 0x00,
+            0x38, 0x00, 0x00, 0x00,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        SECTION( "read through empty record" ) {
+            auto out = std::vector< unsigned char >(8, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+
+            CHECK(err == LFP_OK);
+            CHECK(bytes_read == 8);
+        }
+
+        SECTION( "seek through empty record" ) {
+            test_seek_and_read(tif, 6, LFP_OK);
+        }
+
+        lfp_close(tif);
+    }
+
+    SECTION( "ending on empty record of record type" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x10, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x1C, 0x00, 0x00, 0x00,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+
+        CHECK(err == LFP_UNEXPECTED_EOF);
+
+        lfp_close(tif);
+    }
+
+    }
+
+}
+
 TEST_CASE(
     "Tapeimage can be opened at any TM"
     "[tapeimage][offset]") {

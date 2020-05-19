@@ -833,3 +833,73 @@ TEST_CASE_METHOD(
 
     }
 }
+
+TEST_CASE_METHOD(
+    device,
+    "rp66: Empty record",
+    "[rp66]") {
+
+    SECTION( "tested on "+device_type) {
+
+    SECTION( "empty record in the middle" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x08,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+
+            0x00, 0x04,  //empty record
+            0xFF, 0x01,
+
+            0x00, 0x08,
+            0xFF, 0x01,
+
+            0x05, 0x06, 0x07, 0x08,
+        };
+
+        auto* inner = create(contents);
+        auto* rp66 = lfp_rp66_open(inner);
+
+        SECTION( "read through empty record" ) {
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+
+            CHECK(err == LFP_EOF);
+            CHECK(bytes_read == 8);
+        }
+
+        SECTION( "seek through empty record" ) {
+            test_seek_and_read(rp66, 6, LFP_OK);
+        }
+
+        lfp_close(rp66);
+    }
+
+    SECTION( "ending on empty record" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x08,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+
+            0x00, 0x04,  //empty record
+            0xFF, 0x01,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* rp66 = lfp_rp66_open(mem);
+
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+
+        CHECK(err == LFP_EOF);
+        CHECK(bytes_read == 4);
+
+        lfp_close(rp66);
+    }
+
+    }
+
+}
