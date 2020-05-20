@@ -1281,6 +1281,68 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "Recovery mode and EOF",
+    "[tapeimage][recovery]") {
+
+    SECTION( "recovery and valid EOF" ) {
+        std::vector< unsigned char > contents = {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x14, 0x00, 0x00, 0x00,
+
+            0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+
+            0xFF, 0xFF, 0xFF, 0xFF,  //broken type
+            0x00, 0x00, 0x00, 0x00,
+            0x20, 0x00, 0x00, 0x00,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+
+        // two options are possible: EOF or TRYRECOVERY
+        // CHECK(err == LFP_PROTOCOL_TRYRECOVERY);
+        // CHECK(bytes_read == 8);
+
+        lfp_close(tif);
+    }
+
+    SECTION( "recovery and unexpected EOF" ) {
+        std::vector< unsigned char > contents = {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x14, 0x00, 0x00, 0x00,
+
+            0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+
+            0xFF, 0xFF, 0xFF, 0xFF,  //broken type
+            0x00, 0x00, 0x00, 0x00,
+            0x40, 0x00, 0x00, 0x00,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+
+        // unexpected EOF is a more severe error than try recovery
+        // CHECK(err == LFP_UNEXPECTED_EOF);
+        // CHECK(bytes_read == 8);
+
+        lfp_close(tif);
+    }
+}
+
+
+TEST_CASE(
     "Broken TIF - data missing",
     "[tapeimage][errorcase][incomplete]") {
 
