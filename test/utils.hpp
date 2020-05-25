@@ -173,6 +173,59 @@ void test_random_seek(random_memfile* file) {
     CHECK_THAT(file->out, Catch::Matchers::Equals(file->expected));
 }
 
+void test_seek_and_read(lfp_protocol* outer, int seek_to, int seek_expected,
+                        int read_expected)
+{
+    /*
+     * This becomes a very common test: seek to position, check that tell
+     * corresponds to the position, read 1 byte and verify operation status
+     */
+    auto err = lfp_seek(outer, seek_to);
+    CHECK(err == seek_expected);
+
+    /* TODO: implement seek(x) -> tell() = x
+     * For now commented out until this behavior is assured
+     */
+
+    /*
+    std::int64_t tell;
+    lfp_tell(outer, &tell);
+    CHECK(tell == seek_to);
+    */
+
+    std::int64_t bytes_read = -1;
+    char buf;
+    err = lfp_readinto(outer, &buf, 1, &bytes_read);
+    CHECK(err == read_expected);
+}
+
+void test_seek_and_read(lfp_protocol* outer, int seek_to, int read_expected)
+{
+    test_seek_and_read(outer, seek_to, LFP_OK, read_expected);
+}
+
+void test_seek_and_read(lfp_protocol* outer, int seek_to, int seek_expected,
+                        int read_expected, device* d)
+{
+    /* TODO: this version of method (with device passed) is supposed to be
+     * temporary. For now memfile behaves differently than cfile on seeking
+     * past-eof. When the code is changed to actually process data only on read,
+     * not on seek, this method should be removed in its total
+     */
+    if (d->handle == filehandle::MEM) {
+        /* Seek to memfile-eof causes invalid arguments exception which is not
+         * dealt with. Probably not what we want.
+         * No checks on memfile, just check that operations do not cause
+         * infinite loop
+         */
+        lfp_seek(outer, seek_to);
+        char buf;
+        lfp_readinto(outer, &buf, 1, nullptr);
+    } else {
+        test_seek_and_read(outer, seek_to, seek_expected, read_expected);
+    }
+}
+
 }
 
 

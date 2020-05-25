@@ -342,29 +342,24 @@ TEST_CASE(
     CHECK(rp66 != nullptr);
 
     SECTION( "seek to header border: not indexed" ) {
-        auto err = lfp_seek(rp66, 10);
-        CHECK(err == LFP_OK);
-
-        std::int64_t tell;
-        err = lfp_tell(rp66, &tell);
-        CHECK(tell == 10);
-        CHECK(err == LFP_OK);
+        test_seek_and_read(rp66, 10, LFP_PROTOCOL_FATAL_ERROR);
     }
 
     SECTION( "seek to header border: indexed" ) {
-        auto err = lfp_seek(rp66, 10);
+        std::int64_t bytes_read = -1;
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
         CHECK(err == LFP_OK);
 
-        err = lfp_seek(rp66, 0);
+        err = lfp_seek(rp66, 1);
         CHECK(err == LFP_OK);
 
-        err = lfp_seek(rp66, 10);
+        bytes_read = -1;
+        char buf;
+        err = lfp_readinto(rp66, &buf, 1, &bytes_read);
         CHECK(err == LFP_OK);
 
-        std::int64_t tell;
-        err = lfp_tell(rp66, &tell);
-        CHECK(tell == 10);
-        CHECK(err == LFP_OK);
+        test_seek_and_read(rp66, 10, LFP_PROTOCOL_FATAL_ERROR);
     }
 
     SECTION( "read to header border: not indexed" ) {

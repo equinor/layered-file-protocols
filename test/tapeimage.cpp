@@ -398,13 +398,7 @@ TEST_CASE(
     }
 
     SECTION( "seek to header border: not indexed" ) {
-        auto err = lfp_seek(tif, 16);
-        CHECK(err == LFP_OK);
-
-        std::int64_t tell;
-        err = lfp_tell(tif, &tell);
-        CHECK(err == LFP_OK);
-        CHECK(tell == 16);
+        test_seek_and_read(tif, 16, LFP_PROTOCOL_FATAL_ERROR);
     }
 
     SECTION( "seek to header border: index border" ) {
@@ -416,13 +410,12 @@ TEST_CASE(
         err = lfp_seek(tif, 0);
         CHECK(err == LFP_OK);
 
-        err = lfp_seek(tif, 16);
+        bytes_read = -1;
+        char buf;
+        err = lfp_readinto(tif, &buf, 1, &bytes_read);
         CHECK(err == LFP_OK);
 
-        std::int64_t tell;
-        err = lfp_tell(tif, &tell);
-        CHECK(err == LFP_OK);
-        CHECK(tell == 16);
+        test_seek_and_read(tif, 16, LFP_PROTOCOL_FATAL_ERROR);
     }
 
     SECTION( "seek to header border: indexed" ) {
@@ -434,13 +427,12 @@ TEST_CASE(
         err = lfp_seek(tif, 0);
         CHECK(err == LFP_OK);
 
-        err = lfp_seek(tif, 8);
+        bytes_read = -1;
+        char buf;
+        err = lfp_readinto(tif, &buf, 1, &bytes_read);
         CHECK(err == LFP_OK);
 
-        std::int64_t tell;
-        err = lfp_tell(tif, &tell);
-        CHECK(err == LFP_OK);
-        CHECK(tell == 8);
+        test_seek_and_read(tif, 8, LFP_OK);
     }
 
     SECTION("seek to header border: start of current record") {
@@ -452,8 +444,12 @@ TEST_CASE(
         err = lfp_seek(tif, 12);
         CHECK(err == LFP_OK);
 
-        err = lfp_seek(tif, 8);
+        bytes_read = -1;
+        char buf;
+        err = lfp_readinto(tif, &buf, 1, &bytes_read);
         CHECK(err == LFP_OK);
+
+        test_seek_and_read(tif, 8, LFP_OK);
     }
 
     lfp_close(tif);
@@ -819,13 +815,7 @@ TEST_CASE(
      * chance of figuring out something is wrong. We can do some verifications
      * for headers only, so until we read fake header, we are blind.
      */
-    auto err = lfp_seek(tif, 100);
-    CHECK(err == LFP_OK);
-
-    auto out = std::vector< unsigned char >(1, 0xFF);
-    std::int64_t bytes_read = -1;
-    err = lfp_readinto(tif, out.data(), 1, &bytes_read);
-    CHECK(err == LFP_UNEXPECTED_EOF);
+    test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF);
 
     lfp_close(tif);
 }
@@ -877,22 +867,18 @@ TEST_CASE(
         CHECK(tell == 0);
     }
     SECTION( "Seek past index" ) {
-        err = lfp_seek(tif, 6);
-        CHECK(err == LFP_OK);
-
-        std::int64_t tell;
-        lfp_tell(tif, &tell);
-        CHECK(tell == 6);
+        test_seek_and_read(tif, 6, LFP_OK);
     }
     SECTION( "Seek with index" ) {
-        err = lfp_seek(tif, 2);
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        std::int64_t bytes_read = -1;
+        err = lfp_readinto(tif, out.data(), 8, &bytes_read);
         CHECK(err == LFP_OK);
 
-        std::int64_t tell;
-        lfp_tell(tif, &tell);
-        CHECK(tell == 2);
+        test_seek_and_read(tif, 2, LFP_OK);
     }
     SECTION( "Read from already indexed records" ) {
+        /* won't matter when read is the only indexing operation*/
         err = lfp_seek(tif, 6);
         CHECK(err == LFP_OK);
         err = lfp_seek(tif, 0);
