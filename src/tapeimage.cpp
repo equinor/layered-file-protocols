@@ -574,7 +574,8 @@ void tapeimage::read_header_from_disk() noexcept (false) {
     }
 
     // Check the makefile-provided IS_BIG_ENDIAN, or the one set by gcc
-    #if (defined(IS_BIG_ENDIAN) || __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    #if (defined(IS_BIG_ENDIAN) || \
+        (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)))
         std::reverse(b + 0, b + 4);
         std::reverse(b + 4, b + 8);
         std::reverse(b + 8, b + 12);
