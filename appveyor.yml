@@ -1,0 +1,30 @@
+version: 1.0.{build}
+
+configuration:
+    - Release
+
+os: Visual Studio 2015
+image: Visual Studio 2015
+
+platform:
+    - x86
+    - x64
+
+before_build:
+    - set generator="Visual Studio 14 2015"
+    - IF "%platform%" == "x64" set generator="Visual Studio 14 2015 Win64"
+    - git fetch --tags
+    - vcpkg integrate install
+    - vcpkg install fmt:%platform%-windows
+
+build_script:
+    - ps: mkdir build
+    - ps: pushd build
+    - cmake %APPVEYOR_BUILD_FOLDER%
+            -G %generator%
+            -DCMAKE_CXX_FLAGS="/D_CRT_SECURE_NO_WARNINGS /EHsc"
+            -DLFP_FMT_HEADER_ONLY=ON
+            -DCMAKE_TOOLCHAIN_FILE=C:/Tools/vcpkg/scripts/buildsystems/vcpkg.cmake
+    - cmake --build .  --config %configuration% --target install
+    - ctest --build-config %configuration% --output-on-failure
+
