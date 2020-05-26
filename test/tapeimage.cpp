@@ -1148,6 +1148,14 @@ TEST_CASE(
     }
 }
 
+/*
+ * Only run this test on 64bit architectures - skip 32bit windows
+ *
+ * This test emulates files bigger than 4GB to test tapeimages overflow
+ * protection of the header fields 'next' and 'prev'. Skip due to the 4GB memory
+ * limit of 32bit windows.
+ */
+#if (not (defined(_WIN32) and not defined(_WIN64)))
 TEST_CASE(
     "Operations on 4GB file",
     "[tapeimage][4GB][unsafe]") {
@@ -1294,3 +1302,4 @@ TEST_CASE(
 
     lfp_close(tif);
 }
+#endif
