@@ -27,10 +27,12 @@ option(
 # can't be created, which would be nicer. Fall back to string-resolving the
 # namespaced library
 if (LFP_FMT_HEADER_ONLY)
-    set(fmtlib-header fmt::fmt-header-only)
+    set(fmtlib-comp-def $<TARGET_PROPERTY:fmt::fmt-header-only,INTERFACE_COMPILE_DEFINITIONS>)
+    set(fmtlib-incl-dir $<TARGET_PROPERTY:fmt::fmt-header-only,INTERFACE_INCLUDE_DIRECTORIES>)
     set(fmtlib)
 else ()
-    set(fmtlib-header)
+    set(fmtlib-comp-def)
+    set(fmtlib-incl-dir)
     set(fmtlib fmt::fmt)
 endif ()
 
@@ -70,17 +72,14 @@ add_library(lfp
 )
 add_library(lfp::lfp ALIAS lfp)
 
-target_link_libraries(lfp
-    PUBLIC
-        ${fmtlib}
-    PRIVATE
-        ${fmtlib-header}
-)
+target_link_libraries(lfp PUBLIC ${fmtlib})
 
 target_include_directories(lfp
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
+    PRIVATE
+        ${fmtlib-incl-dir}
 )
 
 target_compile_options(lfp
@@ -94,6 +93,7 @@ target_compile_definitions(lfp
     PRIVATE
         $<$<BOOL:${LFP_BIG_ENDIAN}>:IS_BIG_ENDIAN>
         $<$<NOT:$<BOOL:${LFP_BIG_ENDIAN}>>:IS_LITTLE_ENDIAN>
+        ${fmtlib-comp-def}
 )
 
 install(
