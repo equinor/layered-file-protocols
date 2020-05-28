@@ -563,9 +563,18 @@ void tapeimage::read_header_from_disk() noexcept (false) {
 
         case LFP_EOF:
         {
-            const auto msg = "tapeimage: unexpected EOF when reading header "
-                                "- got {} bytes";
-            throw unexpected_eof(fmt::format(msg, n));
+            if (n == 0)
+                /*
+                 * File is over exactly when we wanted to read a new tapemark.
+                 * As some files do not have file tapemarks in the end,
+                 * consider this to be an accepted situation.
+                 */
+                return;
+            else {
+                const auto msg = "tapeimage: unexpected EOF when reading header "
+                                  "- got {} bytes";
+                throw unexpected_eof(fmt::format(msg, n));
+            }
         }
         default:
             throw not_implemented(

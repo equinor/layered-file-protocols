@@ -708,8 +708,13 @@ TEST_CASE_METHOD(
             auto out = std::vector< unsigned char >(10, 0xFF);
             std::int64_t bytes_read = -1;
             auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
-            //CHECK(err == LFP_EOF);
-            //CHECK(bytes_read == 8);
+            /* it's not absolutely clear whether this situation should be
+            * considered valid, but some complete and valid files are only missing
+            * end tapemarks, so expect LFP_EOF, not LFP_UNEXPECTED_EOF
+            */
+            CHECK(err == LFP_EOF);
+            CHECK(bytes_read == 8);
+            CHECK_THAT(out, Equals(expected));
 
             CHECK(lfp_eof(tif));
 
@@ -725,12 +730,12 @@ TEST_CASE_METHOD(
 
         SECTION( "seek to the data border" ) {
             // TODO: memfile
-            test_seek_and_read(tif, 8, LFP_OK, LFP_UNEXPECTED_EOF, this);
+            test_seek_and_read(tif, 8, LFP_OK, LFP_EOF, this);
         }
 
         SECTION( "seek past data" ) {
             // TODO: memfile
-            test_seek_and_read(tif, 10, LFP_UNEXPECTED_EOF, LFP_EOF, this);
+            test_seek_and_read(tif, 10, LFP_OK, LFP_EOF, this);
         }
 
         lfp_close(tif);
@@ -826,7 +831,7 @@ TEST_CASE_METHOD(
 
         SECTION( "seek past declared data" ) {
             // TODO: memfile
-            test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF, LFP_EOF, this);
+            test_seek_and_read(tif, 100, LFP_OK, LFP_EOF, this);
         }
 
         lfp_close(tif);
@@ -881,7 +886,7 @@ TEST_CASE_METHOD(
         }
 
         SECTION( "seek past declared data" ) {
-            test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF, LFP_EOF, this);
+            test_seek_and_read(tif, 100, LFP_OK, LFP_EOF, this);
         }
 
         lfp_close(tif);
