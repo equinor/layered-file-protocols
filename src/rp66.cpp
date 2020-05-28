@@ -497,8 +497,8 @@ void rp66::seek(std::int64_t n) noexcept (false) {
             return;
         }
 
-        this->current.skip();
         this->fp->seek(end);
+        this->current.skip();
         this->read_header_from_disk();
         if (last != this->index.last())
             this->current.move(this->index.last());
