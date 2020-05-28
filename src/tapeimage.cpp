@@ -530,7 +530,7 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
 int tapeimage::eof() const noexcept (true) {
     // TODO: consider when this says record, but physical file is EOF
     // TODO: end-of-file is an _empty_ record, i.e. two consecutive tape marks
-    return this->current->type == tapeimage::file;
+    return this->fp->eof() or this->current->type == tapeimage::file;
 }
 
 void tapeimage::read_header_from_disk() noexcept (false) {

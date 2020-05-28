@@ -708,11 +708,10 @@ TEST_CASE_METHOD(
             auto out = std::vector< unsigned char >(10, 0xFF);
             std::int64_t bytes_read = -1;
             auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+            //CHECK(err == LFP_EOF);
+            //CHECK(bytes_read == 8);
 
-            CHECK(err == LFP_UNEXPECTED_EOF);
-            auto msg = std::string(lfp_errormsg(tif));
-            CHECK_THAT(msg, Contains("unexpected EOF"));
-            CHECK_THAT(msg, Contains("got 0 bytes"));
+            CHECK(lfp_eof(tif));
 
             err == lfp_seek(tif, 0);
             CHECK(!lfp_eof(tif));
@@ -721,6 +720,7 @@ TEST_CASE_METHOD(
             err = lfp_readinto(tif, out.data(), 8, &bytes_read);
             CHECK(err == LFP_OK);
             CHECK(bytes_read == 8);
+            CHECK(lfp_eof(tif) == lfp_eof(inner));
         }
 
         SECTION( "seek to the data border" ) {
@@ -730,8 +730,7 @@ TEST_CASE_METHOD(
 
         SECTION( "seek past data" ) {
             // TODO: memfile
-            test_seek_and_read(tif, 10, LFP_UNEXPECTED_EOF, LFP_UNEXPECTED_EOF,
-                               this);
+            test_seek_and_read(tif, 10, LFP_UNEXPECTED_EOF, LFP_EOF, this);
         }
 
         lfp_close(tif);
@@ -772,10 +771,12 @@ TEST_CASE_METHOD(
             CHECK_THAT(msg, Contains("got 8 bytes"));
 
             CHECK_THAT(out, Equals(expected));
+
+            CHECK(lfp_eof(tif));
         }
 
         SECTION( "seek past data" ) {
-            test_seek_and_read(tif, 10, LFP_UNEXPECTED_EOF, LFP_UNEXPECTED_EOF);
+            test_seek_and_read(tif, 10, LFP_UNEXPECTED_EOF, LFP_EOF);
         }
 
         lfp_close(tif);
@@ -809,6 +810,8 @@ TEST_CASE_METHOD(
             std::int64_t tell;
             lfp_tell(tif, &tell);
             CHECK(tell == 8);
+
+            CHECK(lfp_eof(tif));
         }
 
         SECTION( "seek to border" ) {
@@ -823,8 +826,7 @@ TEST_CASE_METHOD(
 
         SECTION( "seek past declared data" ) {
             // TODO: memfile
-            test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF,
-                               LFP_UNEXPECTED_EOF, this);
+            test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF, LFP_EOF, this);
         }
 
         lfp_close(tif);
@@ -861,6 +863,8 @@ TEST_CASE_METHOD(
             CHECK_THAT(msg, Contains("got 4 bytes"));
 
             CHECK_THAT(out, Equals(expected));
+
+            CHECK(lfp_eof(tif));
         }
 
         SECTION( "seek inside data " ) {
@@ -877,8 +881,7 @@ TEST_CASE_METHOD(
         }
 
         SECTION( "seek past declared data" ) {
-            test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF,
-                               LFP_UNEXPECTED_EOF, this);
+            test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF, LFP_EOF, this);
         }
 
         lfp_close(tif);
@@ -1026,7 +1029,7 @@ TEST_CASE_METHOD(
         std::int64_t bytes_read = -1;
         const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
 
-        CHECK(err == LFP_UNEXPECTED_EOF);
+        CHECK(err == LFP_EOF);
 
         lfp_close(tif);
     }
@@ -1355,8 +1358,8 @@ TEST_CASE(
         const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
 
         // two options are possible: EOF or TRYRECOVERY
-        // CHECK(err == LFP_PROTOCOL_TRYRECOVERY);
-        // CHECK(bytes_read == 8);
+        CHECK(err == LFP_PROTOCOL_TRYRECOVERY);
+        CHECK(bytes_read == 8);
 
         lfp_close(tif);
     }
