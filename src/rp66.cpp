@@ -450,7 +450,9 @@ noexcept (false) {
             if(this->current.exhausted())
                 return LFP_EOF;
             else {
-                return LFP_UNEXPECTED_EOF;
+                const auto msg = "tapeimage: unexpected EOF when reading record "
+                                "- got {} bytes, expected there to be {} more";
+                throw unexpected_eof(fmt::format(msg, n, this->current.bytes_left()));
             }
         }
 
@@ -551,23 +553,6 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
     assert(err == LFP_EOF ? (n < to_read) : true);
 
     this->current.move(n);
-
-    if (err == LFP_OKINCOMPLETE)
-        return n;
-
-    if (err == LFP_EOF ) {
-        /*
-         * To make record exhausted we have to read everything left in it.
-         * EOF can happen only if we did not read everything we wanted to.
-         * Thus we can't have EOF and read the full record.
-         */
-        assert(not this->current.exhausted());
-        const auto msg = "tapeimage: unexpected EOF when reading record "
-                         "- got {} bytes, expected there to be {} more";
-        throw unexpected_eof(fmt::format(msg, n, this->current.bytes_left()));
-    }
-
-    assert(err == LFP_OK);
 
     return n;
 }

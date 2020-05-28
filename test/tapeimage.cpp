@@ -863,7 +863,7 @@ TEST_CASE_METHOD(
             auto out = std::vector< unsigned char >(8, 0xFF);
             std::int64_t bytes_read = -1;
             const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
-            //CHECK(bytes_read == 4);
+            CHECK(bytes_read == 4);
 
             CHECK(err == LFP_UNEXPECTED_EOF);
             auto msg = std::string(lfp_errormsg(tif));

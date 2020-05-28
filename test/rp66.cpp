@@ -717,7 +717,7 @@ TEST_CASE_METHOD(
             const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
 
             CHECK(err == LFP_UNEXPECTED_EOF);
-            //CHECK(bytes_read == 8);
+            CHECK(bytes_read == 8);
             auto msg = std::string(lfp_errormsg(rp66));
             CHECK_THAT(msg, Contains("unexpected EOF"));
             CHECK_THAT(msg, Contains("got 1 bytes"));
@@ -802,7 +802,7 @@ TEST_CASE_METHOD(
             const auto err = lfp_readinto(rp66, out.data(), 8, &bytes_read);
 
             CHECK(err == LFP_UNEXPECTED_EOF);
-            //CHECK(bytes_read == 4);
+            CHECK(bytes_read == 4);
             auto msg = std::string(lfp_errormsg(rp66));
             CHECK_THAT(msg, Contains("unexpected EOF"));
             CHECK_THAT(msg, Contains("got 4 bytes"));
