@@ -747,7 +747,7 @@ TEST_CASE_METHOD(
         auto* inner = create(contents);
         auto* rp66 = lfp_rp66_open(inner);
 
-        /*SECTION( "read" ) {
+        SECTION( "read" ) {
             auto out = std::vector< unsigned char >(10, 0xFF);
             std::int64_t bytes_read = -1;
             const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
@@ -757,7 +757,7 @@ TEST_CASE_METHOD(
             std::int64_t tell;
             lfp_tell(rp66, &tell);
             CHECK(tell == 4);
-        }*/
+        }
 
         SECTION( "seek to border" ) {
             // TODO: EOF returned in memfile due to separate eof check

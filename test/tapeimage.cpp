@@ -716,6 +716,10 @@ TEST_CASE_METHOD(
             CHECK(bytes_read == 8);
             CHECK_THAT(out, Equals(expected));
 
+            std::int64_t tell;
+            lfp_tell(tif, &tell);
+            CHECK(tell == 8);
+
             CHECK(lfp_eof(tif));
 
             err == lfp_seek(tif, 0);

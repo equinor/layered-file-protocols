@@ -476,8 +476,10 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
 
         if (this->current.exhausted()) {
             if (this->current == this->index.last()) {
+                const auto last = this->index.last();
                 this->read_header_from_disk();
-                this->current.move(this->index.last());
+                if (last != this->index.last())
+                    this->current.move(this->index.last());
             } else {
                 const auto next = this->current.next_record();
                 this->fp->seek(next.tell());
@@ -736,7 +738,8 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 
         this->fp->seek(last->next);
         this->read_header_from_disk();
-        this->current.move(this->index.last());
+        if (last != this->index.last())
+            this->current.move(this->index.last());
         if (this->eof()) return;
     }
 }

@@ -500,8 +500,9 @@ void rp66::seek(std::int64_t n) noexcept (false) {
         this->current.skip();
         this->fp->seek(end);
         this->read_header_from_disk();
+        if (last != this->index.last())
+            this->current.move(this->index.last());
         if (this->eof()) return;
-        this->current.move(this->index.last());
     }
 }
 
@@ -514,9 +515,11 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
             return bytes_read;
         if (this->current.exhausted()) {
             if (this->current == this->index.last()) {
+                const auto last = this->index.last();
                 this->read_header_from_disk();
+                if (last != this->index.last())
+                    this->current.move(this->index.last());
                 if (this->eof()) return bytes_read;
-                this->current.move(this->index.last());
             } else {
                 const auto next = this->current.next_record();
                 this->fp->seek(next.tell());
