@@ -725,18 +725,10 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
             break;
         }
 
-        if (last->type == tapeimage::file) {
-            /*
-             * Seeking past eof will is allowed (as in C FILE), but tell is
-             * left undefined. Trying to read after a seek-past-eof will
-             * immediately report eof.
-             */
-            break;
-        }
-
         this->fp->seek(last->next);
         this->read_header_from_disk();
         this->current.move(this->index.last());
+        if (this->eof()) return;
     }
 }
 
