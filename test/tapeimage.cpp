@@ -678,9 +678,12 @@ TEST_CASE(
     lfp_close(tif);
 }
 
-TEST_CASE(
+TEST_CASE_METHOD(
+    device,
     "Reading truncated file return expected errors",
     "[tapeimage]") {
+
+    SECTION( "testing on "+ device_type) {
 
     SECTION( "eof mark is missing, but data could still be correctly read" ) {
         const auto contents = std::vector< unsigned char > {
@@ -698,19 +701,38 @@ TEST_CASE(
             0xFF, 0xFF //Last two bytes are never written by lfp
         };
 
-        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
-        auto* tif = lfp_tapeimage_open(mem);
+        auto* inner = create(contents);
+        auto* tif = lfp_tapeimage_open(inner);
 
-        auto out = std::vector< unsigned char >(10, 0xFF);
-        std::int64_t bytes_read = -1;
-        const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
 
-        CHECK(err == LFP_UNEXPECTED_EOF);
-        auto msg = std::string(lfp_errormsg(tif));
-        CHECK_THAT(msg, Contains("unexpected EOF"));
-        CHECK_THAT(msg, Contains("got 0 bytes"));
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            auto msg = std::string(lfp_errormsg(tif));
+            CHECK_THAT(msg, Contains("unexpected EOF"));
+            CHECK_THAT(msg, Contains("got 0 bytes"));
 
-        CHECK_THAT(out, Equals(expected));
+            err == lfp_seek(tif, 0);
+            CHECK(!lfp_eof(tif));
+
+            bytes_read = -1;
+            err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+            CHECK(err == LFP_OK);
+            CHECK(bytes_read == 8);
+        }
+
+        SECTION( "seek to the data border" ) {
+            // TODO: memfile
+            test_seek_and_read(tif, 8, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek past data" ) {
+            // TODO: memfile
+            test_seek_and_read(tif, 10, LFP_UNEXPECTED_EOF, LFP_UNEXPECTED_EOF,
+                               this);
+        }
 
         lfp_close(tif);
     }
@@ -735,19 +757,75 @@ TEST_CASE(
             0xFF, 0xFF //Last two bytes are never written by lfp
         };
 
-        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
-        auto* tif = lfp_tapeimage_open(mem);
+        auto* inner = create(contents);
+        auto* tif = lfp_tapeimage_open(inner);
 
-        auto out = std::vector< unsigned char >(10, 0xFF);
-        std::int64_t bytes_read = -1;
-        const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
 
-        CHECK(err == LFP_UNEXPECTED_EOF);
-        auto msg = std::string(lfp_errormsg(tif));
-        CHECK_THAT(msg, Contains("unexpected EOF"));
-        CHECK_THAT(msg, Contains("got 8 bytes"));
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            //CHECK(bytes_read == 8);
+            auto msg = std::string(lfp_errormsg(tif));
+            CHECK_THAT(msg, Contains("unexpected EOF"));
+            CHECK_THAT(msg, Contains("got 8 bytes"));
 
-        CHECK_THAT(out, Equals(expected));
+            CHECK_THAT(out, Equals(expected));
+        }
+
+        SECTION( "seek past data" ) {
+            test_seek_and_read(tif, 10, LFP_UNEXPECTED_EOF, LFP_UNEXPECTED_EOF);
+        }
+
+        lfp_close(tif);
+    }
+
+    SECTION( "truncated after header" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x14, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x40, 0x00, 0x00, 0x00,
+        };
+
+        auto* inner = create(contents);
+        auto* tif = lfp_tapeimage_open(inner);
+
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+
+            //CHECK(err == LFP_UNEXPECTED_EOF);
+            //CHECK(bytes_read == 8);
+
+            std::int64_t tell;
+            lfp_tell(tif, &tell);
+            CHECK(tell == 8);
+        }
+
+        SECTION( "seek to border" ) {
+            // TODO: EOF returned in memfile due to separate eof check
+            test_seek_and_read(tif, 8, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek in declared data" ) {
+            // TODO: memfile
+            test_seek_and_read(tif, 10, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek past declared data" ) {
+            // TODO: memfile
+            test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF,
+                               LFP_UNEXPECTED_EOF, this);
+        }
 
         lfp_close(tif);
     }
@@ -768,21 +846,44 @@ TEST_CASE(
         };
 
 
-        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
-        auto* tif = lfp_tapeimage_open(mem);
+        auto* inner = create(contents);
+        auto* tif = lfp_tapeimage_open(inner);
 
-        auto out = std::vector< unsigned char >(8, 0xFF);
-        std::int64_t bytes_read = -1;
-        const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(8, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+            //CHECK(bytes_read == 4);
 
-        CHECK(err == LFP_UNEXPECTED_EOF);
-        auto msg = std::string(lfp_errormsg(tif));
-        CHECK_THAT(msg, Contains("unexpected EOF"));
-        CHECK_THAT(msg, Contains("got 4 bytes"));
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            auto msg = std::string(lfp_errormsg(tif));
+            CHECK_THAT(msg, Contains("unexpected EOF"));
+            CHECK_THAT(msg, Contains("got 4 bytes"));
 
-        CHECK_THAT(out, Equals(expected));
+            CHECK_THAT(out, Equals(expected));
+        }
+
+        SECTION( "seek inside data " ) {
+            test_seek_and_read(tif, 3, LFP_OK);
+        }
+
+        // TODO: memfile for all the tests
+        SECTION( "seek to border" ) {
+            test_seek_and_read(tif, 4, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek into declared data" ) {
+            test_seek_and_read(tif, 6, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek past declared data" ) {
+            test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF,
+                               LFP_UNEXPECTED_EOF, this);
+        }
 
         lfp_close(tif);
+    }
+
     }
 }
 
