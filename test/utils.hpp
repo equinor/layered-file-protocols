@@ -37,7 +37,8 @@ uniquemem memopen(const std::vector< unsigned char >& v) {
 namespace {
 
 std::vector< unsigned char > make_tempfile(std::size_t size) {
-    return GENERATE_COPY(take(1, chunk(size, random< unsigned char >(0, 255))));
+    auto content =  GENERATE_COPY(take(1, chunk(size, random< unsigned short >(0, 255))));
+    return std::vector< unsigned char >(content.begin(), content.end());
 }
 
 struct random_memfile {

@@ -537,7 +537,8 @@ void rp66::read_header_from_disk() noexcept (false) {
     }
 
     // Check the makefile-provided IS_LITTLE_ENDIAN, or the one set by gcc
-    #if (defined(IS_LITTLE_ENDIAN) || __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+    #if (defined(IS_LITTLE_ENDIAN) || \
+        (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)))
         std::reverse(b + 0, b + 2);
     #endif
 
