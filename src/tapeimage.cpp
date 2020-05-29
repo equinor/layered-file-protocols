@@ -546,7 +546,7 @@ void tapeimage::read_header_from_disk() noexcept (false) {
              * read was paused (stream blocked, for example) then it can be
              * recovered from later
              */
-            throw protocol_failed_recovery(
+            throw io_error(
                 "tapeimage: incomplete read of tapeimage header, "
                 "recovery not implemented"
             );

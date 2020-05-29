@@ -588,7 +588,7 @@ void rp66::read_header_from_disk() noexcept (false) {
         case LFP_OK: break;
 
         case LFP_OKINCOMPLETE:
-            throw protocol_failed_recovery(
+            throw io_error(
                 "rp66: incomplete read of Visible Record Header, "
                 "recovery not implemented"
             );

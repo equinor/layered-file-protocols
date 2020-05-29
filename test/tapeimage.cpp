@@ -1152,9 +1152,7 @@ TEST_CASE(
         std::int64_t bytes_read = -1;
         const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
 
-        // TODO: questionable. There was never recovery in the first place
-        // incomplete would make more sense
-        CHECK(err == LFP_PROTOCOL_FAILEDRECOVERY);
+        CHECK(err == LFP_IOERROR);
         CHECK(bytes_read == 0);
 
         lfp_close(tif);
