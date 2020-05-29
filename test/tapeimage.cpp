@@ -1179,6 +1179,55 @@ TEST_CASE(
     }
 }
 
+TEST_CASE_METHOD(
+    device,
+    "Broken TIF: FILE tapemark has data inside of it",
+    "[tapeimage][seek]") {
+
+    SECTION ("running on "+device_type) {
+
+    const auto contents = std::vector< unsigned char > {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x20, 0x00, 0x00, 0x00,
+
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00,
+    };
+
+    auto* inner = create(contents);
+    auto* tif = lfp_tapeimage_open(inner);
+
+    SECTION( "read data" ) {
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+
+        CHECK(err == LFP_EOF);
+        CHECK(bytes_read == 0);
+    }
+
+    SECTION( "seek inside data" ) {
+        test_seek_and_read(tif, 4, LFP_EOF);
+    }
+
+    SECTION( "seek outside data" ) {
+        // it's questionable whether we expect LFP_EOF or LFP_UNEXPECTED_EOF
+        test_seek_and_read(tif, 100, LFP_EOF);
+    }
+
+    lfp_close(tif);
+    }
+}
+
 TEST_CASE(
     "Broken TIF - recovery mode",
     "[tapeimage][errorcase][incomplete]") {
