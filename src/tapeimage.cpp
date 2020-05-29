@@ -459,8 +459,12 @@ noexcept (false) {
     if (n == len)
         return LFP_OK;
 
-    if (this->eof())
-        return LFP_EOF;
+    if (this->eof()) {
+        if(this->current.exhausted())
+            return LFP_EOF;
+        else
+            return LFP_UNEXPECTED_EOF;
+    }
 
     else
         return LFP_OKINCOMPLETE;

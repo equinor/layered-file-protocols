@@ -813,7 +813,7 @@ TEST_CASE_METHOD(
             std::int64_t bytes_read = -1;
             const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
 
-            //CHECK(err == LFP_UNEXPECTED_EOF);
+            CHECK(err == LFP_UNEXPECTED_EOF);
             //CHECK(bytes_read == 8);
 
             std::int64_t tell;
@@ -824,8 +824,7 @@ TEST_CASE_METHOD(
         }
 
         SECTION( "seek to border" ) {
-            // TODO: EOF returned in memfile due to separate eof check
-            test_seek_and_read(tif, 8, LFP_OK, LFP_UNEXPECTED_EOF, this);
+            test_seek_and_read(tif, 8, LFP_UNEXPECTED_EOF);
         }
 
         SECTION( "seek in declared data" ) {
@@ -1223,17 +1222,17 @@ TEST_CASE_METHOD(
         std::int64_t bytes_read = -1;
         const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
 
-        CHECK(err == LFP_EOF);
+        CHECK(err == LFP_UNEXPECTED_EOF);
         CHECK(bytes_read == 0);
     }
 
     SECTION( "seek inside data" ) {
-        test_seek_and_read(tif, 4, LFP_EOF);
+        test_seek_and_read(tif, 4, LFP_UNEXPECTED_EOF);
     }
 
     SECTION( "seek outside data" ) {
         // it's questionable whether we expect LFP_EOF or LFP_UNEXPECTED_EOF
-        test_seek_and_read(tif, 100, LFP_EOF);
+        test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF);
     }
 
     lfp_close(tif);

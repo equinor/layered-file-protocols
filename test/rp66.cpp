@@ -752,7 +752,7 @@ TEST_CASE_METHOD(
             std::int64_t bytes_read = -1;
             const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
 
-            //CHECK(err == LFP_UNEXPECTED_EOF);
+            CHECK(err == LFP_UNEXPECTED_EOF);
 
             std::int64_t tell;
             lfp_tell(rp66, &tell);
@@ -760,8 +760,7 @@ TEST_CASE_METHOD(
         }
 
         SECTION( "seek to border" ) {
-            // TODO: EOF returned in memfile due to separate eof check
-            test_seek_and_read(rp66, 4, LFP_OK, LFP_UNEXPECTED_EOF, this);
+            test_seek_and_read(rp66, 4, LFP_UNEXPECTED_EOF);
         }
 
         SECTION( "seek in declared data" ) {
