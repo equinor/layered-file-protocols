@@ -766,13 +766,11 @@ TEST_CASE_METHOD(
         }
 
         SECTION( "seek in declared data" ) {
-            // TODO: memfile
-            test_seek_and_read(rp66, 10, LFP_OK, LFP_UNEXPECTED_EOF, this);
+            test_seek_and_read(rp66, 10, LFP_UNEXPECTED_EOF);
         }
 
         SECTION( "seek past declared data" ) {
-            // TODO: memfile
-            test_seek_and_read(rp66, 100, LFP_OK, LFP_EOF, this);
+            test_seek_and_read(rp66, 100, LFP_EOF);
         }
 
         lfp_close(rp66);

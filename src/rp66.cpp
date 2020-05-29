@@ -519,7 +519,28 @@ void rp66::seek(std::int64_t n) noexcept (false) {
         this->read_header_from_disk();
         if (last != this->index.last())
             this->current.move(this->index.last());
-        if (this->eof()) return;
+        if (this->eof()){
+            if (last == this->index.last())
+                /**
+                 * There was no new header read, meaning that data was over
+                 * somewhere in the last record. However without explicit read
+                 * performed we do not know if the record was complete or not.
+                 */
+                return;
+
+            /**
+             * There was a valid header processed, but file is reported to be
+             * over after it. Skip number of bytes in current record
+             * corresponding to requested tell.
+             */
+            const auto last = this->index.last();
+            const auto pos  = this->index.index_of(last);
+            const auto real_offset = this->addr.physical(n, pos);
+            const auto skip = std::min(real_offset - this->current.tell(),
+                                       this->current.bytes_left());
+            this->current.move(skip);
+            return;
+        }
     }
 }
 
