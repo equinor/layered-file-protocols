@@ -86,8 +86,10 @@ public:
     /*
      * Find the record header that contains the logical offset n. Behaviour is
      * undefined if contains(n) is false.
+     *
+     * The hint is always checked before doing a full search of the index.
      */
-    iterator find(std::int64_t n) const noexcept (false);
+    iterator find(std::int64_t n, iterator hint) const noexcept (false);
 
     void append(const header& head) noexcept (false);
 
@@ -233,19 +235,79 @@ bool record_index::contains(std::int64_t n) const noexcept (true) {
 }
 
 record_index::iterator
-record_index::find(std::int64_t n) const noexcept (false) {
-    assert(this->contains(n));
+record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
+    /*
+     * A real world usage pattern is a lot of small (forward) seeks still
+     * within the same record. A lot of time can be saved by not looking
+     * through the index when the seek is inside the current record.
+     */
+    assert(n >= 0);
+    const auto in_hint = [this, hint] (std::int64_t n) noexcept (true) {
+        const auto pos = this->index_of(hint);
+        const auto end = this->addr.logical(hint->offset + hint->length, pos);
 
-    auto cur = this->begin();
-    while (true) {
-        const auto pos = this->index_of(cur);
-        const auto off = cur->offset + cur->length;
+        if (pos == 0)
+            return n < end;
 
-        if (n < this->addr.logical(off, pos))
-            return cur;
+        const auto begin = this->addr.logical(hint->offset + hint->length, pos - 1);
 
-        cur++;
+        return n >= begin and n < end;
+    };
+
+    if (in_hint(n)) {
+        return hint;
     }
+
+    const auto begin = this->begin();
+    const auto end   = this->end();
+
+    /**
+     * Look up the record containing the logical offset n in the index.
+     *
+     * seek() is a pretty common operation, and experience from dlisio [1]
+     * shows that a poor algorithm here significantly slows down programs.
+     *
+     * The algorithm actually makes two searches:
+     *
+     * Phase 1 is an approximating binary search that pretends the logical and
+     * phyiscal offset are the same. Since phyiscal offset >= logical offset,
+     * we know that the result is always correct or before the correct one in
+     * the ordered index.
+     *
+     * Phase 2 is a linear search from [cur, end) that is aware of the
+     * logical/physical offset distinction. Because of the approximation, it
+     * should do fairly few hops.
+     *
+     * The main reason for the two-phase search is that an elements' index is
+     * required to compare logical addresses to physical ones, and upper_bound
+     * is oblivious to the current item's position.
+     */
+
+    // phase 1
+    const auto addr = this->addr;
+    auto less = [addr] (std::int64_t n, const header& h) noexcept (true) {
+        return n < addr.logical(h.offset + h.length, 0);
+    };
+    const auto lower = std::upper_bound(begin, end, n, less);
+
+    // phase 2
+    /*
+     * We found the right record when record->next > n. All hits after will
+     * also be a match, but this is ok since the search is in an ordered list.
+     */
+    auto pos = this->index_of(lower);
+    auto next_larger = [addr, n, pos] (const header& rec) mutable {
+        return n < addr.logical(rec.offset + rec.length, pos++);
+    };
+
+    const auto cur = std::find_if(lower, end, next_larger);
+    if (cur >= this->end()) {
+        const auto msg = "seek: n = {} not found in index, last indexed byte {}";
+        throw std::logic_error(
+                fmt::format(msg, n, this->back().offset + this->back().length));
+    }
+
+    return cur;
 }
 
 void record_index::append(const header& head) noexcept (false) {
@@ -403,7 +465,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
      */
 
     if (this->index.contains(n)) {
-        const auto next = this->index.find(n);
+        const auto next = this->index.find(n, this->current);
         const auto pos  = this->index.index_of(next);
         const auto real_offset = this->addr.physical(n, pos);
 
