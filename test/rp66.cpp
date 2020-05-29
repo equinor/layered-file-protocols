@@ -194,6 +194,7 @@ TEST_CASE(
     std::int64_t bytes_read = -1;
     const auto err = lfp_readinto(rp66, out.data(), 4, &bytes_read);
     CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
+    CHECK(bytes_read == 2);
 
     lfp_close(rp66);
 }
@@ -650,7 +651,7 @@ TEST_CASE(
         // TODO: questionable. There was never recovery in the first place
         // incomplete would make more sense
         CHECK(err == LFP_PROTOCOL_FAILEDRECOVERY);
-        //CHECK(bytes_read == 0);
+        CHECK(bytes_read == 0);
 
         lfp_close(rp66);
     }
@@ -753,6 +754,7 @@ TEST_CASE_METHOD(
             const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
 
             CHECK(err == LFP_UNEXPECTED_EOF);
+            CHECK(bytes_read == 4);
 
             std::int64_t tell;
             lfp_tell(rp66, &tell);

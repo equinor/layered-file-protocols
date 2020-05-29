@@ -447,92 +447,88 @@ lfp_status tapeimage::readinto(
         std::int64_t* bytes_read)
 noexcept (false) {
 
-    const auto n = this->readinto(dst, len);
-    assert(n <= len);
-
     if (bytes_read)
-        *bytes_read = n;
+        *bytes_read = 0;
+    std::int64_t to_read = len;
+    while(true) {
+        const auto n = this->readinto(dst, to_read);
 
-    if (this->recovery)
-        return this->recovery;
+        if (bytes_read)
+            *bytes_read += n;
 
-    if (n == len)
-        return LFP_OK;
+        to_read -= n;
+        dst = advance(dst, n);
 
-    if (this->eof()) {
-        if(this->current.exhausted())
-            return LFP_EOF;
-        else
-            return LFP_UNEXPECTED_EOF;
+        if (to_read == 0) {
+            if (this->recovery)
+                return this->recovery;
+            return LFP_OK;
+        }
+
+        if (this->eof()) {
+            if(this->current.exhausted()) {
+                if (this->recovery)
+                    return this->recovery;
+                return LFP_EOF;
+            } else {
+                return LFP_UNEXPECTED_EOF;
+            }
+        }
+
+        if (n == 0)
+            return LFP_OKINCOMPLETE;
     }
-
-    else
-        return LFP_OKINCOMPLETE;
 }
 
 std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
     assert(this->current.bytes_left() >= 0);
-    std::int64_t bytes_read = 0;
+    std::int64_t n = 0;
 
-    while (true) {
-        if (this->eof())
-            return bytes_read;
-
-        if (this->current.exhausted()) {
-            if (this->current == this->index.last()) {
-                const auto last = this->index.last();
-                this->read_header_from_disk();
-                if (last != this->index.last())
-                    this->current.move(this->index.last());
-            } else {
-                const auto next = this->current.next_record();
-                this->fp->seek(next.tell());
-                this->current.move(next);
-            }
-
-            /* might be EOF, or even empty records, so re-start  */
-            continue;
+    while (not this->eof() and this->current.exhausted()) {
+        if (this->current == this->index.last()) {
+            const auto last = this->index.last();
+            this->read_header_from_disk();
+            if (last != this->index.last())
+                this->current.move(this->index.last());
+        } else {
+            const auto next = this->current.next_record();
+            this->fp->seek(next.tell());
+            this->current.move(next);
         }
 
-        assert(not this->current.exhausted());
-        std::int64_t n;
-        const auto to_read = std::min(len, this->current.bytes_left());
-        const auto err = this->fp->readinto(dst, to_read, &n);
-        assert(err == LFP_OKINCOMPLETE ? (n < to_read) : true);
-        assert(err == LFP_EOF ? (n < to_read) : true);
-
-        this->current.move(n);
-        bytes_read += n;
-        dst = advance(dst, n);
-
-        if (err == LFP_OKINCOMPLETE)
-            return bytes_read;
-
-        if (err == LFP_EOF) {
-            /*
-             * To make record exhausted we have to read everything left in it.
-             * EOF can happen only if we did not read everything we wanted to.
-             * Thus we can't have EOF and read the full record.
-             */
-            assert(not this->current.exhausted());
-            const auto msg = "tapeimage: unexpected EOF when reading header "
-                             "- got {} bytes";
-            throw unexpected_eof(fmt::format(msg, bytes_read));
-        }
-
-        assert(err == LFP_OK);
-
-        if (n == len)
-            return bytes_read;
-
-        /*
-         * The full read was performed, but there's still more requested - move
-         * onto the next segment. This differs from when read returns OKINCOMPLETE,
-         * in which case the underlying stream is temporarily exhausted or blocked,
-         * and fewer bytes than requested could be provided.
-         */
-        len -= n;
+        /* might be EOF, or even empty records, so re-start  */
+        continue;
     }
+
+    if (this->eof())
+        return n;
+
+    assert(not this->current.exhausted());
+    const auto to_read = std::min(len, this->current.bytes_left());
+    const auto err = this->fp->readinto(dst, to_read, &n);
+    assert(err == LFP_OKINCOMPLETE ? (n < to_read) : true);
+    assert(err == LFP_EOF ? (n < to_read) : true);
+
+    this->current.move(n);
+
+    if (err == LFP_OKINCOMPLETE)
+        return n;
+
+    if (err == LFP_EOF ) {
+        /*
+         * To make record exhausted we have to read everything left in it.
+         * EOF can happen only if we did not read everything we wanted to.
+         * Thus we can't have EOF and read the full record.
+         */
+        assert(not this->current.exhausted());
+        const auto msg = "tapeimage: unexpected EOF when reading record "
+                         "- got {} bytes, expected there to be {} more";
+        throw unexpected_eof(fmt::format(msg, n, this->current.bytes_left()));
+    }
+
+    assert(err == LFP_OK);
+
+    return n;
 }
 
 // TODO: status instead of boolean?

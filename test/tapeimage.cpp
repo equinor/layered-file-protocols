@@ -774,7 +774,7 @@ TEST_CASE_METHOD(
             const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
 
             CHECK(err == LFP_UNEXPECTED_EOF);
-            //CHECK(bytes_read == 8);
+            CHECK(bytes_read == 8);
             auto msg = std::string(lfp_errormsg(tif));
             CHECK_THAT(msg, Contains("unexpected EOF"));
             CHECK_THAT(msg, Contains("got 8 bytes"));
@@ -814,7 +814,7 @@ TEST_CASE_METHOD(
             const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
 
             CHECK(err == LFP_UNEXPECTED_EOF);
-            //CHECK(bytes_read == 8);
+            CHECK(bytes_read == 8);
 
             std::int64_t tell;
             lfp_tell(tif, &tell);
@@ -1157,7 +1157,7 @@ TEST_CASE(
         // TODO: questionable. There was never recovery in the first place
         // incomplete would make more sense
         CHECK(err == LFP_PROTOCOL_FAILEDRECOVERY);
-        //CHECK(bytes_read == 0);
+        CHECK(bytes_read == 0);
 
         lfp_close(tif);
     }
@@ -1394,8 +1394,8 @@ TEST_CASE(
         const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
 
         // unexpected EOF is a more severe error than try recovery
-        // CHECK(err == LFP_UNEXPECTED_EOF);
-        // CHECK(bytes_read == 8);
+        CHECK(err == LFP_UNEXPECTED_EOF);
+        CHECK(bytes_read == 8);
 
         lfp_close(tif);
     }
@@ -1426,16 +1426,10 @@ TEST_CASE(
             auto msg = std::string(lfp_errormsg(tif));
             CHECK_THAT(msg, Contains("missing data"));
 
-            // TODO: possibly should return number of bytes actually read
-            // before failure happened?
-            /*
             CHECK(bytes_read == 12);
-            auto read = std::vector< unsigned char >(
-                out.begin(),
-                std::next(out.begin(), 12)
-                );
+            auto read = std::vector< unsigned char >(out.begin(),
+                std::next(out.begin(), 12));
             CHECK_THAT(read, Equals(expected));
-            */
         }
 
         // in case state revert for before the operation implemented
