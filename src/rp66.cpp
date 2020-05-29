@@ -573,6 +573,12 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
     assert(err == LFP_OKINCOMPLETE ? (n < to_read) : true);
     assert(err == LFP_EOF ? (n < to_read) : true);
 
+    /* There is currently no different code path depending on returned error,
+     * but asserts are still useful. However clang-analyzer doesn't see that
+     * it's used in a macro and reports false-positive. Hence workaround.
+     */
+    (void)err;
+
     this->current.move(n);
 
     return n;
