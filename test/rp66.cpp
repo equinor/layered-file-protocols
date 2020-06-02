@@ -194,6 +194,7 @@ TEST_CASE(
     std::int64_t bytes_read = -1;
     const auto err = lfp_readinto(rp66, out.data(), 4, &bytes_read);
     CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
+    CHECK(bytes_read == 2);
 
     lfp_close(rp66);
 }
@@ -342,29 +343,24 @@ TEST_CASE(
     CHECK(rp66 != nullptr);
 
     SECTION( "seek to header border: not indexed" ) {
-        auto err = lfp_seek(rp66, 10);
-        CHECK(err == LFP_OK);
-
-        std::int64_t tell;
-        err = lfp_tell(rp66, &tell);
-        CHECK(tell == 10);
-        CHECK(err == LFP_OK);
+        test_seek_and_read(rp66, 10, LFP_PROTOCOL_FATAL_ERROR);
     }
 
     SECTION( "seek to header border: indexed" ) {
-        auto err = lfp_seek(rp66, 10);
+        std::int64_t bytes_read = -1;
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
         CHECK(err == LFP_OK);
 
-        err = lfp_seek(rp66, 0);
+        err = lfp_seek(rp66, 1);
         CHECK(err == LFP_OK);
 
-        err = lfp_seek(rp66, 10);
+        bytes_read = -1;
+        char buf;
+        err = lfp_readinto(rp66, &buf, 1, &bytes_read);
         CHECK(err == LFP_OK);
 
-        std::int64_t tell;
-        err = lfp_tell(rp66, &tell);
-        CHECK(tell == 10);
-        CHECK(err == LFP_OK);
+        test_seek_and_read(rp66, 10, LFP_PROTOCOL_FATAL_ERROR);
     }
 
     SECTION( "read to header border: not indexed" ) {
@@ -628,4 +624,279 @@ TEST_CASE(
 
     auto err = lfp_close(outer);
     CHECK(err == LFP_OK);
+}
+
+TEST_CASE(
+    "Blocked inner layer is processed correctly in rp66",
+    "[rp66][blockedpipe]") {
+
+    std::vector< unsigned char > data = {
+        0x00, 0x40, 0xFF, 0x01,
+
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C,
+        0x0D, 0x0E, 0x0F, 0x10,
+    };
+
+    SECTION( "incomplete in header" ) {
+
+        auto* blocked = new blockedpipe(data, 3);
+        auto* rp66 = lfp_rp66_open(blocked);
+
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(rp66, out.data(), 16, &bytes_read);
+
+        CHECK(err == LFP_IOERROR);
+        CHECK(bytes_read == 0);
+
+        lfp_close(rp66);
+    }
+
+    SECTION( "incomplete in data" ) {
+        auto* blocked = new blockedpipe(data, 10);
+        auto* rp66 = lfp_rp66_open(blocked);
+
+        SECTION ("read") {
+            auto out = std::vector< unsigned char >(12, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(rp66, out.data(), 12, &bytes_read);
+
+            CHECK(err == LFP_OKINCOMPLETE);
+            CHECK(bytes_read == 6);
+
+            const auto expected = std::vector< unsigned char > {
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06,
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF //never written
+            };
+            CHECK_THAT(out, Equals(expected));
+        }
+
+        SECTION ("seek") {
+            test_seek_and_read(rp66, 12, LFP_OKINCOMPLETE);
+        }
+
+        lfp_close(rp66);
+    }
+}
+
+TEST_CASE_METHOD(
+    device,
+    "rp66: Reading truncated file return expected errors",
+    "[rp66]") {
+
+    SECTION( "testing on "+ device_type) {
+
+    SECTION( "truncated in header" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x0C,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+
+            0x00,
+            //oops
+        };
+
+        const auto expected = std::vector< unsigned char > {
+            0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+            0xFF, 0xFF //Last two bytes are never written by lfp
+        };
+
+        auto* inner = create(contents);
+        auto* rp66 = lfp_rp66_open(inner);
+
+        SECTION( "read" ){
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            CHECK(bytes_read == 8);
+            auto msg = std::string(lfp_errormsg(rp66));
+            CHECK_THAT(msg, Contains("unexpected EOF"));
+            CHECK_THAT(msg, Contains("got 1 bytes"));
+
+            CHECK_THAT(out, Equals(expected));
+
+            CHECK(lfp_eof(rp66));
+        }
+
+        SECTION( "seek past data" ) {
+            test_seek_and_read(rp66, 10, LFP_UNEXPECTED_EOF, LFP_EOF);
+        }
+
+        lfp_close(rp66);
+    }
+
+    SECTION( "truncated after header" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x08,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+
+            0x00, 0x0C,
+            0xFF, 0x01,
+        };
+
+        auto* inner = create(contents);
+        auto* rp66 = lfp_rp66_open(inner);
+
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            CHECK(bytes_read == 4);
+
+            std::int64_t tell;
+            lfp_tell(rp66, &tell);
+            CHECK(tell == 4);
+        }
+
+        SECTION( "seek to border" ) {
+            test_seek_and_read(rp66, 4, LFP_UNEXPECTED_EOF);
+        }
+
+        SECTION( "seek in declared data" ) {
+            test_seek_and_read(rp66, 10, LFP_UNEXPECTED_EOF);
+        }
+
+        SECTION( "seek past declared data" ) {
+            test_seek_and_read(rp66, 100, LFP_EOF);
+        }
+
+        lfp_close(rp66);
+    }
+
+    SECTION( "truncated in data" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x0C,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+            //oops
+        };
+
+        const auto expected = std::vector< unsigned char > {
+            0x01, 0x02, 0x03, 0x04,
+            0xFF, 0xFF, 0xFF, 0xFF,
+        };
+
+
+        auto* inner = create(contents);
+        auto* rp66 = lfp_rp66_open(inner);
+
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(8, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(rp66, out.data(), 8, &bytes_read);
+
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            CHECK(bytes_read == 4);
+            auto msg = std::string(lfp_errormsg(rp66));
+            CHECK_THAT(msg, Contains("unexpected EOF"));
+            CHECK_THAT(msg, Contains("got 4 bytes"));
+
+            CHECK_THAT(out, Equals(expected));
+
+            CHECK(lfp_eof(rp66));
+        }
+
+        SECTION( "seek in data" ) {
+            test_seek_and_read(rp66, 3, LFP_OK);
+        }
+
+        // TODO: memfile for all the tests
+        SECTION( "seek to border" ) {
+            test_seek_and_read(rp66, 4, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek into declared data" ) {
+            test_seek_and_read(rp66, 6, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek past declared data" ) {
+            test_seek_and_read(rp66, 100, LFP_OK, LFP_EOF, this);
+        }
+
+        lfp_close(rp66);
+    }
+
+    }
+}
+
+TEST_CASE_METHOD(
+    device,
+    "rp66: Empty record",
+    "[rp66]") {
+
+    SECTION( "tested on "+device_type) {
+
+    SECTION( "empty record in the middle" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x08,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+
+            0x00, 0x04,  //empty record
+            0xFF, 0x01,
+
+            0x00, 0x08,
+            0xFF, 0x01,
+
+            0x05, 0x06, 0x07, 0x08,
+        };
+
+        auto* inner = create(contents);
+        auto* rp66 = lfp_rp66_open(inner);
+
+        SECTION( "read through empty record" ) {
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+
+            CHECK(err == LFP_EOF);
+            CHECK(bytes_read == 8);
+        }
+
+        SECTION( "seek through empty record" ) {
+            test_seek_and_read(rp66, 6, LFP_OK);
+        }
+
+        lfp_close(rp66);
+    }
+
+    SECTION( "ending on empty record" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x08,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+
+            0x00, 0x04,  //empty record
+            0xFF, 0x01,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* rp66 = lfp_rp66_open(mem);
+
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+
+        CHECK(err == LFP_EOF);
+        CHECK(bytes_read == 4);
+
+        lfp_close(rp66);
+    }
+
+    }
+
 }

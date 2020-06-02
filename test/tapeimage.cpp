@@ -398,13 +398,7 @@ TEST_CASE(
     }
 
     SECTION( "seek to header border: not indexed" ) {
-        auto err = lfp_seek(tif, 16);
-        CHECK(err == LFP_OK);
-
-        std::int64_t tell;
-        err = lfp_tell(tif, &tell);
-        CHECK(err == LFP_OK);
-        CHECK(tell == 16);
+        test_seek_and_read(tif, 16, LFP_PROTOCOL_FATAL_ERROR);
     }
 
     SECTION( "seek to header border: index border" ) {
@@ -416,13 +410,12 @@ TEST_CASE(
         err = lfp_seek(tif, 0);
         CHECK(err == LFP_OK);
 
-        err = lfp_seek(tif, 16);
+        bytes_read = -1;
+        char buf;
+        err = lfp_readinto(tif, &buf, 1, &bytes_read);
         CHECK(err == LFP_OK);
 
-        std::int64_t tell;
-        err = lfp_tell(tif, &tell);
-        CHECK(err == LFP_OK);
-        CHECK(tell == 16);
+        test_seek_and_read(tif, 16, LFP_PROTOCOL_FATAL_ERROR);
     }
 
     SECTION( "seek to header border: indexed" ) {
@@ -434,13 +427,12 @@ TEST_CASE(
         err = lfp_seek(tif, 0);
         CHECK(err == LFP_OK);
 
-        err = lfp_seek(tif, 8);
+        bytes_read = -1;
+        char buf;
+        err = lfp_readinto(tif, &buf, 1, &bytes_read);
         CHECK(err == LFP_OK);
 
-        std::int64_t tell;
-        err = lfp_tell(tif, &tell);
-        CHECK(err == LFP_OK);
-        CHECK(tell == 8);
+        test_seek_and_read(tif, 8, LFP_OK);
     }
 
     SECTION("seek to header border: start of current record") {
@@ -452,8 +444,12 @@ TEST_CASE(
         err = lfp_seek(tif, 12);
         CHECK(err == LFP_OK);
 
-        err = lfp_seek(tif, 8);
+        bytes_read = -1;
+        char buf;
+        err = lfp_readinto(tif, &buf, 1, &bytes_read);
         CHECK(err == LFP_OK);
+
+        test_seek_and_read(tif, 8, LFP_OK);
     }
 
     lfp_close(tif);
@@ -682,9 +678,12 @@ TEST_CASE(
     lfp_close(tif);
 }
 
-TEST_CASE(
+TEST_CASE_METHOD(
+    device,
     "Reading truncated file return expected errors",
     "[tapeimage]") {
+
+    SECTION( "testing on "+ device_type) {
 
     SECTION( "eof mark is missing, but data could still be correctly read" ) {
         const auto contents = std::vector< unsigned char > {
@@ -702,19 +701,46 @@ TEST_CASE(
             0xFF, 0xFF //Last two bytes are never written by lfp
         };
 
-        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
-        auto* tif = lfp_tapeimage_open(mem);
+        auto* inner = create(contents);
+        auto* tif = lfp_tapeimage_open(inner);
 
-        auto out = std::vector< unsigned char >(10, 0xFF);
-        std::int64_t bytes_read = -1;
-        const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+            /* it's not absolutely clear whether this situation should be
+            * considered valid, but some complete and valid files are only missing
+            * end tapemarks, so expect LFP_EOF, not LFP_UNEXPECTED_EOF
+            */
+            CHECK(err == LFP_EOF);
+            CHECK(bytes_read == 8);
+            CHECK_THAT(out, Equals(expected));
 
-        CHECK(err == LFP_UNEXPECTED_EOF);
-        auto msg = std::string(lfp_errormsg(tif));
-        CHECK_THAT(msg, Contains("unexpected EOF"));
-        CHECK_THAT(msg, Contains("got 0 bytes"));
+            std::int64_t tell;
+            lfp_tell(tif, &tell);
+            CHECK(tell == 8);
 
-        CHECK_THAT(out, Equals(expected));
+            CHECK(lfp_eof(tif));
+
+            err == lfp_seek(tif, 0);
+            CHECK(!lfp_eof(tif));
+
+            bytes_read = -1;
+            err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+            CHECK(err == LFP_OK);
+            CHECK(bytes_read == 8);
+            CHECK(lfp_eof(tif) == lfp_eof(inner));
+        }
+
+        SECTION( "seek to the data border" ) {
+            // TODO: memfile
+            test_seek_and_read(tif, 8, LFP_OK, LFP_EOF, this);
+        }
+
+        SECTION( "seek past data" ) {
+            // TODO: memfile
+            test_seek_and_read(tif, 10, LFP_OK, LFP_EOF, this);
+        }
 
         lfp_close(tif);
     }
@@ -739,19 +765,75 @@ TEST_CASE(
             0xFF, 0xFF //Last two bytes are never written by lfp
         };
 
-        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
-        auto* tif = lfp_tapeimage_open(mem);
+        auto* inner = create(contents);
+        auto* tif = lfp_tapeimage_open(inner);
 
-        auto out = std::vector< unsigned char >(10, 0xFF);
-        std::int64_t bytes_read = -1;
-        const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
 
-        CHECK(err == LFP_UNEXPECTED_EOF);
-        auto msg = std::string(lfp_errormsg(tif));
-        CHECK_THAT(msg, Contains("unexpected EOF"));
-        CHECK_THAT(msg, Contains("got 8 bytes"));
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            CHECK(bytes_read == 8);
+            auto msg = std::string(lfp_errormsg(tif));
+            CHECK_THAT(msg, Contains("unexpected EOF"));
+            CHECK_THAT(msg, Contains("got 8 bytes"));
 
-        CHECK_THAT(out, Equals(expected));
+            CHECK_THAT(out, Equals(expected));
+
+            CHECK(lfp_eof(tif));
+        }
+
+        SECTION( "seek past data" ) {
+            test_seek_and_read(tif, 10, LFP_UNEXPECTED_EOF, LFP_EOF);
+        }
+
+        lfp_close(tif);
+    }
+
+    SECTION( "truncated after header" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x14, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x40, 0x00, 0x00, 0x00,
+        };
+
+        auto* inner = create(contents);
+        auto* tif = lfp_tapeimage_open(inner);
+
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(10, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            CHECK(bytes_read == 8);
+
+            std::int64_t tell;
+            lfp_tell(tif, &tell);
+            CHECK(tell == 8);
+
+            CHECK(lfp_eof(tif));
+        }
+
+        SECTION( "seek to border" ) {
+            test_seek_and_read(tif, 8, LFP_UNEXPECTED_EOF);
+        }
+
+        SECTION( "seek in declared data" ) {
+            test_seek_and_read(tif, 10, LFP_UNEXPECTED_EOF);
+        }
+
+        SECTION( "seek past declared data" ) {
+            test_seek_and_read(tif, 100, LFP_EOF);
+        }
 
         lfp_close(tif);
     }
@@ -772,21 +854,45 @@ TEST_CASE(
         };
 
 
-        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
-        auto* tif = lfp_tapeimage_open(mem);
+        auto* inner = create(contents);
+        auto* tif = lfp_tapeimage_open(inner);
 
-        auto out = std::vector< unsigned char >(8, 0xFF);
-        std::int64_t bytes_read = -1;
-        const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(8, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+            CHECK(bytes_read == 4);
 
-        CHECK(err == LFP_UNEXPECTED_EOF);
-        auto msg = std::string(lfp_errormsg(tif));
-        CHECK_THAT(msg, Contains("unexpected EOF"));
-        CHECK_THAT(msg, Contains("got 4 bytes"));
+            CHECK(err == LFP_UNEXPECTED_EOF);
+            auto msg = std::string(lfp_errormsg(tif));
+            CHECK_THAT(msg, Contains("unexpected EOF"));
+            CHECK_THAT(msg, Contains("got 4 bytes"));
 
-        CHECK_THAT(out, Equals(expected));
+            CHECK_THAT(out, Equals(expected));
+
+            CHECK(lfp_eof(tif));
+        }
+
+        SECTION( "seek inside data " ) {
+            test_seek_and_read(tif, 3, LFP_OK);
+        }
+
+        // TODO: memfile for all the tests
+        SECTION( "seek to border" ) {
+            test_seek_and_read(tif, 4, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek into declared data" ) {
+            test_seek_and_read(tif, 6, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek past declared data" ) {
+            test_seek_and_read(tif, 100, LFP_OK, LFP_EOF, this);
+        }
 
         lfp_close(tif);
+    }
+
     }
 }
 
@@ -819,15 +925,123 @@ TEST_CASE(
      * chance of figuring out something is wrong. We can do some verifications
      * for headers only, so until we read fake header, we are blind.
      */
-    auto err = lfp_seek(tif, 100);
-    CHECK(err == LFP_OK);
-
-    auto out = std::vector< unsigned char >(1, 0xFF);
-    std::int64_t bytes_read = -1;
-    err = lfp_readinto(tif, out.data(), 1, &bytes_read);
-    CHECK(err == LFP_UNEXPECTED_EOF);
+    test_seek_and_read(tif, 100, LFP_UNEXPECTED_EOF);
 
     lfp_close(tif);
+}
+
+TEST_CASE_METHOD(
+    device,
+    "tapeimage: Empty record",
+    "[tapeimage]") {
+
+    SECTION( "run on device "+device_type ) {
+
+    SECTION( "FILE tapemark at the beginning" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x01, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x0C, 0x00, 0x00, 0x00,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x1C, 0x00, 0x00, 0x00,
+
+            0x01, 0x02, 0x03, 0x04,
+
+            0x01, 0x00, 0x00, 0x00,
+            0x0C, 0x00, 0x00, 0x00,
+            0x28, 0x00, 0x00, 0x00,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        SECTION( "read" ) {
+            auto out = std::vector< unsigned char >(4, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 4, &bytes_read);
+
+            CHECK(err == LFP_EOF);
+            CHECK(bytes_read == 0);
+        }
+
+        SECTION( "seek ") {
+            test_seek_and_read(tif, 2, LFP_EOF);
+        }
+
+        lfp_close(tif);
+    }
+
+    SECTION( "empty record in the middle" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x10, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x1C, 0x00, 0x00, 0x00,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x10, 0x00, 0x00, 0x00,
+            0x2C, 0x00, 0x00, 0x00,
+
+            0x4D, 0x41, 0x52, 0x4B,
+
+            0x01, 0x00, 0x00, 0x00,
+            0x1C, 0x00, 0x00, 0x00,
+            0x38, 0x00, 0x00, 0x00,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        SECTION( "read through empty record" ) {
+            auto out = std::vector< unsigned char >(8, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+
+            CHECK(err == LFP_OK);
+            CHECK(bytes_read == 8);
+        }
+
+        SECTION( "seek through empty record" ) {
+            test_seek_and_read(tif, 6, LFP_OK);
+        }
+
+        lfp_close(tif);
+    }
+
+    SECTION( "ending on empty record of record type" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x10, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x1C, 0x00, 0x00, 0x00,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+
+        CHECK(err == LFP_EOF);
+
+        lfp_close(tif);
+    }
+
+    }
+
 }
 
 TEST_CASE(
@@ -877,22 +1091,18 @@ TEST_CASE(
         CHECK(tell == 0);
     }
     SECTION( "Seek past index" ) {
-        err = lfp_seek(tif, 6);
-        CHECK(err == LFP_OK);
-
-        std::int64_t tell;
-        lfp_tell(tif, &tell);
-        CHECK(tell == 6);
+        test_seek_and_read(tif, 6, LFP_OK);
     }
     SECTION( "Seek with index" ) {
-        err = lfp_seek(tif, 2);
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        std::int64_t bytes_read = -1;
+        err = lfp_readinto(tif, out.data(), 8, &bytes_read);
         CHECK(err == LFP_OK);
 
-        std::int64_t tell;
-        lfp_tell(tif, &tell);
-        CHECK(tell == 2);
+        test_seek_and_read(tif, 2, LFP_OK);
     }
     SECTION( "Read from already indexed records" ) {
+        /* won't matter when read is the only indexing operation*/
         err = lfp_seek(tif, 6);
         CHECK(err == LFP_OK);
         err = lfp_seek(tif, 0);
@@ -916,6 +1126,113 @@ TEST_CASE(
         CHECK_THAT(out, Equals(expected));
     }
     lfp_close(tif);
+}
+
+TEST_CASE(
+    "Blocked inner layer is processed correctly in tapeimage",
+    "[tapeimage][blockedpipe]") {
+
+    std::vector< unsigned char > data = {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x40, 0x00, 0x00, 0x00,
+
+        0x01, 0x02, 0x03, 0x04,
+        0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C,
+        0x0D, 0x0E, 0x0F, 0x10,
+    };
+
+    SECTION( "incomplete in header" ) {
+
+        auto* blocked = new blockedpipe(data, 10);
+        auto* tif = lfp_tapeimage_open(blocked);
+
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+
+        CHECK(err == LFP_IOERROR);
+        CHECK(bytes_read == 0);
+
+        lfp_close(tif);
+    }
+
+    SECTION( "incomplete in data" ) {
+        auto* blocked = new blockedpipe(data, 20);
+        auto* tif = lfp_tapeimage_open(blocked);
+
+        SECTION ("read") {
+            auto out = std::vector< unsigned char >(12, 0xFF);
+            std::int64_t bytes_read = -1;
+            const auto err = lfp_readinto(tif, out.data(), 12, &bytes_read);
+
+            CHECK(err == LFP_OKINCOMPLETE);
+            CHECK(bytes_read == 8);
+
+            const auto expected = std::vector< unsigned char > {
+                0x01, 0x02, 0x03, 0x04,
+                0x05, 0x06, 0x07, 0x08,
+                0xFF, 0xFF, 0xFF, 0xFF //never written
+            };
+            CHECK_THAT(out, Equals(expected));
+        }
+
+        SECTION ("seek") {
+            test_seek_and_read(tif, 12, LFP_OKINCOMPLETE);
+        }
+
+        lfp_close(tif);
+    }
+}
+
+TEST_CASE_METHOD(
+    device,
+    "Broken TIF: FILE tapemark has data inside of it",
+    "[tapeimage][seek]") {
+
+    SECTION ("running on "+device_type) {
+
+    const auto contents = std::vector< unsigned char > {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x20, 0x00, 0x00, 0x00,
+
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00,
+    };
+
+    auto* inner = create(contents);
+    auto* tif = lfp_tapeimage_open(inner);
+
+    SECTION( "read data" ) {
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+
+        CHECK(err == LFP_UNEXPECTED_EOF);
+        CHECK(bytes_read == 0);
+    }
+
+    SECTION( "seek inside data" ) {
+        test_seek_and_read(tif, 4, LFP_UNEXPECTED_EOF);
+    }
+
+    SECTION( "seek outside data" ) {
+        // it's questionable whether we expect LFP_EOF or LFP_UNEXPECTED_EOF
+        test_seek_and_read(tif, 100, LFP_EOF);
+    }
+
+    lfp_close(tif);
+    }
 }
 
 TEST_CASE(
@@ -1020,6 +1337,68 @@ TEST_CASE(
 }
 
 TEST_CASE(
+    "Recovery mode and EOF",
+    "[tapeimage][recovery]") {
+
+    SECTION( "recovery and valid EOF" ) {
+        std::vector< unsigned char > contents = {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x14, 0x00, 0x00, 0x00,
+
+            0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+
+            0xFF, 0xFF, 0xFF, 0xFF,  //broken type
+            0x00, 0x00, 0x00, 0x00,
+            0x20, 0x00, 0x00, 0x00,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+
+        // two options are possible: EOF or TRYRECOVERY
+        CHECK(err == LFP_PROTOCOL_TRYRECOVERY);
+        CHECK(bytes_read == 8);
+
+        lfp_close(tif);
+    }
+
+    SECTION( "recovery and unexpected EOF" ) {
+        std::vector< unsigned char > contents = {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x14, 0x00, 0x00, 0x00,
+
+            0x01, 0x02, 0x03, 0x04,
+            0x05, 0x06, 0x07, 0x08,
+
+            0xFF, 0xFF, 0xFF, 0xFF,  //broken type
+            0x00, 0x00, 0x00, 0x00,
+            0x40, 0x00, 0x00, 0x00,
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* tif = lfp_tapeimage_open(mem);
+
+        auto out = std::vector< unsigned char >(16, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
+
+        // unexpected EOF is a more severe error than try recovery
+        CHECK(err == LFP_UNEXPECTED_EOF);
+        CHECK(bytes_read == 8);
+
+        lfp_close(tif);
+    }
+}
+
+
+TEST_CASE(
     "Broken TIF - data missing",
     "[tapeimage][errorcase][incomplete]") {
 
@@ -1043,16 +1422,10 @@ TEST_CASE(
             auto msg = std::string(lfp_errormsg(tif));
             CHECK_THAT(msg, Contains("missing data"));
 
-            // TODO: possibly should return number of bytes actually read
-            // before failure happened?
-            /*
             CHECK(bytes_read == 12);
-            auto read = std::vector< unsigned char >(
-                out.begin(),
-                std::next(out.begin(), 12)
-                );
+            auto read = std::vector< unsigned char >(out.begin(),
+                std::next(out.begin(), 12));
             CHECK_THAT(read, Equals(expected));
-            */
         }
 
         // in case state revert for before the operation implemented
@@ -1172,6 +1545,7 @@ TEST_CASE(
      */
 
     using header = std::vector< unsigned char >;
+    const size_t GB = 1024 * 1024 * 1024;
 
     class memfake : public lfp_protocol
     {
@@ -1226,11 +1600,37 @@ TEST_CASE(
 
         int eof() const noexcept(true) override { return 0; }
 
+        /* seek and tell handle only expected calls at the headers borders */
+
         void seek(std::int64_t n) noexcept (false) {
-            // for the purpose of this test do nothing and
-            // let readinto to handle return of the correct header
+            int jump = 0;
+            switch (n) {
+                case 0:
+                    break;
+                case 2*GB + 12:
+                    jump = 1;
+                    break;
+                case 3*GB + 24:
+                    jump = 2;
+                    break;
+                default:
+                    throw std::runtime_error("unexpected seek in test");
+            }
+
+            this->it = std::next(std::begin(headers), jump);
             return;
         }
+
+        std::int64_t tell() const noexcept (false) {
+            if(*this->it == headers[1]) {
+                return 2*GB + 12;
+            } else if (*this->it == headers[2]) {
+                return 3*GB + 24;
+            } else {
+                return 0;
+            }
+        }
+
         lfp_protocol* peel() noexcept (false) override { throw; }
         lfp_protocol* peek() const noexcept (false) override { throw; }
 
@@ -1239,13 +1639,11 @@ TEST_CASE(
         std::vector< header >::const_iterator it;
     };
 
-    auto* mem = new memfake();
-    auto* tif = lfp_tapeimage_open(mem);
+    lfp_protocol* mem = new memfake();
+    lfp_protocol* tif = lfp_tapeimage_open(mem);
 
     unsigned char fake_mem = 1;
     unsigned char* dst = &fake_mem;
-
-    const size_t GB = 1024 * 1024 * 1024;
 
     SECTION( "read over 4GB data in one chunk" ) {
         std::int64_t nread = 0;
@@ -1287,17 +1685,18 @@ TEST_CASE(
     }
 
     SECTION( "seek beyond 4GB when zero is close to 4GB" ) {
-        /*
-        // TODO:
-        // would be the case of several logical files
+        lfp_peel(tif, &mem);
+        lfp_close(tif);
 
-        // set TIF start to be at 3GB + 24 bytes (header2)
+        auto err = lfp_seek(mem, 2*GB + 12);
+        REQUIRE(err == LFP_OK);
+        tif = lfp_tapeimage_open(mem);
 
-        auto err = lfp_seek(tif, 2*GB);
+        err = lfp_seek(tif, 2*GB);
+
         CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
-
-        auto msg = std::string(lfp_errormsg(tif));
-        CHECK_THAT(msg, Contains("4GB")); */
+        const auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("4GB"));
     }
 
     lfp_close(tif);

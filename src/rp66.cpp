@@ -430,18 +430,35 @@ lfp_status rp66::readinto(
         std::int64_t len,
         std::int64_t* bytes_read)
 noexcept (false) {
-    const auto n = this->readinto(dst, len);
-    assert(n <= len);
 
-    if (bytes_read) *bytes_read = n;
+    if (bytes_read)
+        *bytes_read = 0;
+    std::int64_t to_read = len;
+    while(true) {
+        const auto n = this->readinto(dst, to_read);
 
-    if (n == len)
-        return LFP_OK;
+        if (bytes_read)
+            *bytes_read += n;
 
-    if (this->eof())
-        return LFP_EOF;
-    else
-        return LFP_OKINCOMPLETE;
+        to_read -= n;
+        dst = advance(dst, n);
+
+        if (to_read == 0)
+            return LFP_OK;
+
+        if (this->eof()) {
+            if(this->current.exhausted())
+                return LFP_EOF;
+            else {
+                const auto msg = "tapeimage: unexpected EOF when reading record "
+                                "- got {} bytes, expected there to be {} more";
+                throw unexpected_eof(fmt::format(msg, n, this->current.bytes_left()));
+            }
+        }
+
+        if (n == 0)
+            return LFP_OKINCOMPLETE;
+    }
 }
 
 int rp66::eof() const noexcept (true) {
@@ -497,69 +514,74 @@ void rp66::seek(std::int64_t n) noexcept (false) {
             return;
         }
 
-        this->current.skip();
         this->fp->seek(end);
+        this->current.skip();
         this->read_header_from_disk();
-        if (this->eof()) return;
-        this->current.move(this->index.last());
+        if (last != this->index.last())
+            this->current.move(this->index.last());
+        if (this->eof()){
+            if (last == this->index.last())
+                /**
+                 * There was no new header read, meaning that data was over
+                 * somewhere in the last record. However without explicit read
+                 * performed we do not know if the record was complete or not.
+                 */
+                return;
+
+            /**
+             * There was a valid header processed, but file is reported to be
+             * over after it. Skip number of bytes in current record
+             * corresponding to requested tell.
+             */
+            const auto last = this->index.last();
+            const auto pos  = this->index.index_of(last);
+            const auto real_offset = this->addr.physical(n, pos);
+            const auto skip = std::min(real_offset - this->current.tell(),
+                                       this->current.bytes_left());
+            this->current.move(skip);
+            return;
+        }
     }
 }
 
 std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
     assert(this->current.bytes_left() >= 0);
-    std::int64_t bytes_read = 0;
+    std::int64_t n = 0;
 
-    while (true) {
+    while (this->current.exhausted()) {
         if (this->eof())
-            return bytes_read;
-        if (this->current.exhausted()) {
-            if (this->current == this->index.last()) {
-                this->read_header_from_disk();
-                if (this->eof()) return bytes_read;
+            return n;
+
+        if (this->current == this->index.last()) {
+            const auto last = this->index.last();
+            this->read_header_from_disk();
+            if (last != this->index.last())
                 this->current.move(this->index.last());
-            } else {
-                const auto next = this->current.next_record();
-                this->fp->seek(next.tell());
-                this->current.move(next);
-            }
-            /* might be EOF, or even empty records, so re-start  */
-            continue;
+        } else {
+            const auto next = this->current.next_record();
+            this->fp->seek(next.tell());
+            this->current.move(next);
         }
 
-        assert(not this->current.exhausted());
-        std::int64_t n;
-        const auto to_read = std::min(len, this->current.bytes_left());
-        const auto err = this->fp->readinto(dst, to_read, &n);
-
-        this->current.move(n);
-        bytes_read += n;
-        dst = advance(dst, n);
-
-        if (err == LFP_OKINCOMPLETE)
-            return bytes_read;
-
-        if (err == LFP_EOF and not this->current.exhausted()) {
-            const auto msg = "rp66: unexpected EOF when reading record "
-                             "- got {} bytes, expected there to be {} more";
-            throw unexpected_eof(fmt::format(msg, n, this->current.bytes_left()));
-        }
-
-        if (err == LFP_EOF and this->current.exhausted())
-            return bytes_read;
-
-        assert(err == LFP_OK);
-
-        if (n == len)
-            return bytes_read;
-        /*
-         * The full read was performed, but there's still more requested - move
-         * onto the next segment. This differs from when read returns OKINCOMPLETE,
-         * in which case the underlying stream is temporarily exhausted or blocked,
-         * and fewer bytes than requested could be provided.
-         */
-
-        len -= n;
+        /* might be EOF, or even empty records, so re-start  */
+        continue;
     }
+
+    assert(not this->current.exhausted());
+    const auto to_read = std::min(len, this->current.bytes_left());
+    const auto err = this->fp->readinto(dst, to_read, &n);
+    assert(err == LFP_OKINCOMPLETE ? (n < to_read) : true);
+    assert(err == LFP_EOF ? (n < to_read) : true);
+
+    /* There is currently no different code path depending on returned error,
+     * but asserts are still useful. However clang-analyzer doesn't see that
+     * it's used in a macro and reports false-positive. Hence workaround.
+     */
+    (void)err;
+
+    this->current.move(n);
+
+    return n;
 }
 
 void rp66::read_header_from_disk() noexcept (false) {
@@ -572,7 +594,7 @@ void rp66::read_header_from_disk() noexcept (false) {
         case LFP_OK: break;
 
         case LFP_OKINCOMPLETE:
-            throw protocol_failed_recovery(
+            throw io_error(
                 "rp66: incomplete read of Visible Record Header, "
                 "recovery not implemented"
             );
@@ -588,7 +610,7 @@ void rp66::read_header_from_disk() noexcept (false) {
             else {
                 const auto msg = "rp66: unexpected EOF when reading header "
                                  "- got {} bytes";
-                throw protocol_fatal(fmt::format(msg, n));
+                throw unexpected_eof(fmt::format(msg, n));
             }
 
 

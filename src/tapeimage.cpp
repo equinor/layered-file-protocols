@@ -447,90 +447,86 @@ lfp_status tapeimage::readinto(
         std::int64_t* bytes_read)
 noexcept (false) {
 
-    const auto n = this->readinto(dst, len);
-    assert(n <= len);
-
     if (bytes_read)
-        *bytes_read = n;
+        *bytes_read = 0;
+    std::int64_t to_read = len;
+    while(true) {
+        const auto n = this->readinto(dst, to_read);
 
-    if (this->recovery)
-        return this->recovery;
+        if (bytes_read)
+            *bytes_read += n;
 
-    if (n == len)
-        return LFP_OK;
+        to_read -= n;
+        dst = advance(dst, n);
 
-    if (this->eof())
-        return LFP_EOF;
+        if (to_read == 0) {
+            if (this->recovery)
+                return this->recovery;
+            return LFP_OK;
+        }
 
-    else
-        return LFP_OKINCOMPLETE;
+        if (this->eof()) {
+            if(this->current.exhausted()) {
+                if (this->recovery)
+                    return this->recovery;
+                return LFP_EOF;
+            } else {
+                const auto msg = "tapeimage: unexpected EOF when reading record "
+                                "- got {} bytes, expected there to be {} more";
+                throw unexpected_eof(fmt::format(msg, n, this->current.bytes_left()));
+            }
+        }
+
+        if (n == 0)
+            return LFP_OKINCOMPLETE;
+    }
 }
 
 std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
     assert(this->current.bytes_left() >= 0);
-    std::int64_t bytes_read = 0;
+    std::int64_t n = 0;
 
-    while (true) {
-        if (this->eof())
-            return bytes_read;
-
-        if (this->current.exhausted()) {
-            if (this->current == this->index.last()) {
-                this->read_header_from_disk();
+    while (not this->eof() and this->current.exhausted()) {
+        if (this->current == this->index.last()) {
+            const auto last = this->index.last();
+            this->read_header_from_disk();
+            if (last != this->index.last())
                 this->current.move(this->index.last());
-            } else {
-                const auto next = this->current.next_record();
-                this->fp->seek(next.tell());
-                this->current.move(next);
-            }
-
-            /* might be EOF, or even empty records, so re-start  */
-            continue;
+        } else {
+            const auto next = this->current.next_record();
+            this->fp->seek(next.tell());
+            this->current.move(next);
         }
 
-        assert(not this->current.exhausted());
-        std::int64_t n;
-        const auto to_read = std::min(len, this->current.bytes_left());
-        const auto err = this->fp->readinto(dst, to_read, &n);
-        assert(err == LFP_OKINCOMPLETE ? (n < to_read) : true);
-        assert(err == LFP_EOF ? (n < to_read) : true);
-
-        this->current.move(n);
-        bytes_read += n;
-        dst = advance(dst, n);
-
-        if (err == LFP_OKINCOMPLETE)
-            return bytes_read;
-
-        if (err == LFP_EOF and not this->current.exhausted()) {
-            const auto msg = "tapeimage: unexpected EOF when reading header "
-                             "- got {} bytes";
-            throw unexpected_eof(fmt::format(msg, bytes_read));
-        }
-
-        if (err == LFP_EOF and this->current.exhausted())
-            return bytes_read;
-
-        assert(err == LFP_OK);
-
-        if (n == len)
-            return bytes_read;
-
-        /*
-         * The full read was performed, but there's still more requested - move
-         * onto the next segment. This differs from when read returns OKINCOMPLETE,
-         * in which case the underlying stream is temporarily exhausted or blocked,
-         * and fewer bytes than requested could be provided.
-         */
-        len -= n;
+        /* might be EOF, or even empty records, so re-start  */
+        continue;
     }
+
+    if (this->eof())
+        return n;
+
+    assert(not this->current.exhausted());
+    const auto to_read = std::min(len, this->current.bytes_left());
+    const auto err = this->fp->readinto(dst, to_read, &n);
+    assert(err == LFP_OKINCOMPLETE ? (n < to_read) : true);
+    assert(err == LFP_EOF ? (n < to_read) : true);
+
+    /* There is currently no different code path depending on returned error,
+     * but asserts are still useful. However clang-analyzer doesn't see that
+     * it's used in a macro and reports false-positive. Hence workaround.
+     */
+    (void)err;
+
+    this->current.move(n);
+
+    return n;
 }
 
 // TODO: status instead of boolean?
 int tapeimage::eof() const noexcept (true) {
     // TODO: consider when this says record, but physical file is EOF
     // TODO: end-of-file is an _empty_ record, i.e. two consecutive tape marks
-    return this->current->type == tapeimage::file;
+    return this->fp->eof() or this->current->type == tapeimage::file;
 }
 
 void tapeimage::read_header_from_disk() noexcept (false) {
@@ -556,16 +552,25 @@ void tapeimage::read_header_from_disk() noexcept (false) {
              * read was paused (stream blocked, for example) then it can be
              * recovered from later
              */
-            throw protocol_failed_recovery(
+            throw io_error(
                 "tapeimage: incomplete read of tapeimage header, "
                 "recovery not implemented"
             );
 
         case LFP_EOF:
         {
-            const auto msg = "tapeimage: unexpected EOF when reading header "
-                                "- got {} bytes";
-            throw unexpected_eof(fmt::format(msg, n));
+            if (n == 0)
+                /*
+                 * File is over exactly when we wanted to read a new tapemark.
+                 * As some files do not have file tapemarks in the end,
+                 * consider this to be an accepted situation.
+                 */
+                return;
+            else {
+                const auto msg = "tapeimage: unexpected EOF when reading header "
+                                  "- got {} bytes";
+                throw unexpected_eof(fmt::format(msg, n));
+            }
         }
         default:
             throw not_implemented(
@@ -725,18 +730,34 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
             break;
         }
 
-        if (last->type == tapeimage::file) {
-            /*
-             * Seeking past eof will is allowed (as in C FILE), but tell is
-             * left undefined. Trying to read after a seek-past-eof will
-             * immediately report eof.
-             */
-            break;
-        }
-
         this->fp->seek(last->next);
+        // skips the whole record even if file is truncated
+        this->current.skip();
         this->read_header_from_disk();
-        this->current.move(this->index.last());
+        if (last != this->index.last())
+            this->current.move(this->index.last());
+        if (this->eof()) {
+            if (last == this->index.last())
+                /**
+                 * There was no new header read, meaning that data was over
+                 * somewhere in the last record. However without explicit read
+                 * performed we do not know if the record was complete or not.
+                 */
+                return;
+
+            /**
+             * There was a valid header processed, but file is reported to be
+             * over after it or it is a header of file type. Skip number of
+             * bytes in current record corresponding to requested tell.
+             */
+            const auto last = this->index.last();
+            const auto pos  = this->index.index_of(last);
+            const auto real_offset = this->addr.physical(n, pos);
+            const auto skip = std::min(real_offset - this->current.tell(),
+                                       this->current.bytes_left());
+            this->current.move(skip);
+            return;
+        }
     }
 }
 
