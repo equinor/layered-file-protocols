@@ -59,7 +59,11 @@ struct random_rp66 : random_memfile {
             std::memcpy(head.data() + 2, &format, sizeof(format));
             std::memcpy(head.data() + 3, &major,  sizeof(major));
 
-            std::reverse(head.begin() + 0, head.begin() + 2);
+            #if (defined(IS_LITTLE_ENDIAN) || \
+                (defined(__BYTE_ORDER__) && \
+                (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)))
+                std::reverse(head.begin() + 0, head.begin() + 2);
+            #endif
             bytes.insert(bytes.end(), head.begin(), head.end());
             bytes.insert(bytes.end(), src, src + n);
             src += n;
