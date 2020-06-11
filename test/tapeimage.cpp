@@ -41,7 +41,7 @@ struct random_tapeimage : random_memfile {
     void make(int records) {
         REQUIRE(records > 0);
         // constant defined by the format
-        const std::uint32_t record = 0;
+        std::uint32_t record = 0;
 
         const std::int64_t record_size = std::ceil(double(size) / records);
         INFO("Partitioning " << size << " bytes into "
@@ -53,7 +53,13 @@ struct random_tapeimage : random_memfile {
         std::int64_t remaining = expected.size();
         REQUIRE(remaining > 0);
         std::uint32_t prev = 0;
-        for (int i = 0; i < records; ++i) {
+        for (int i = 0; i < records + 1; ++i) {
+            if (records == i) {
+                REQUIRE(remaining == 0);
+                REQUIRE(src == std::end(expected));
+                // on reaching the end redefine record to be of file type
+                record = 1;
+            }
             const auto n = std::min(record_size, remaining);
             auto head = std::vector< unsigned char >(12, 0);
             const std::uint32_t next = n + tape.size() + head.size();
@@ -67,21 +73,7 @@ struct random_tapeimage : random_memfile {
             src += n;
             remaining -= n;
         }
-        REQUIRE(remaining == 0);
-        REQUIRE(src == std::end(expected));
 
-        auto tail = std::vector< unsigned char > {
-            0x1, 0x0, 0x0, 0x0, // tape record
-            0x0, 0x0, 0x0, 0x0, // start-of-tape, should be prev
-            0x0, 0x0, 0x0, 0x0, // placeholder to get size right
-        };
-
-        const std::uint32_t eof = tape.size() + 12;
-        std::memcpy(tail.data() + 4, &prev, sizeof(prev));
-        std::memcpy(tail.data() + 8, &eof,  sizeof(eof));
-        tape.insert(tape.end(), tail.begin(), tail.end());
-
-        REQUIRE(tape.size() == eof);
         REQUIRE(tape.size() == expected.size() + (records + 1) * 12);
         lfp_close(f);
         f = nullptr;
