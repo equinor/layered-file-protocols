@@ -147,6 +147,11 @@ add_executable(unit-tests
     test/tapeimage.cpp
     test/rp66.cpp
 )
+target_compile_definitions(unit-tests
+    PRIVATE
+        $<$<BOOL:${LFP_BIG_ENDIAN}>:IS_BIG_ENDIAN>
+        $<$<NOT:$<BOOL:${LFP_BIG_ENDIAN}>>:IS_LITTLE_ENDIAN>
+)
 target_link_libraries(unit-tests
     lfp::lfp
     Catch2::Catch2
