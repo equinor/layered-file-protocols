@@ -506,7 +506,7 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
         return n;
 
     assert(not this->current.exhausted());
-    const auto to_read = std::min(len, this->current.bytes_left());
+    const auto to_read = (std::min)(len, this->current.bytes_left());
     const auto err = this->fp->readinto(dst, to_read, &n);
     assert(err == LFP_OKINCOMPLETE ? (n < to_read) : true);
     assert(err == LFP_EOF ? (n < to_read) : true);
@@ -684,7 +684,7 @@ void tapeimage::read_header_from_disk() noexcept (false) {
 void tapeimage::seek(std::int64_t n) noexcept (false) {
     assert(n >= 0);
 
-    if (std::numeric_limits<std::uint32_t>::max() < n)
+    if ((std::numeric_limits<std::uint32_t>::max)() < n)
         throw invalid_args("Too big seek offset. TIF protocol does not "
                            "support files larger than 4GB");
 
@@ -753,8 +753,8 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
             const auto last = this->index.last();
             const auto pos  = this->index.index_of(last);
             const auto real_offset = this->addr.physical(n, pos);
-            const auto skip = std::min(real_offset - this->current.tell(),
-                                       this->current.bytes_left());
+            const auto skip = (std::min)(real_offset - this->current.tell(),
+                                         this->current.bytes_left());
             this->current.move(skip);
             return;
         }
