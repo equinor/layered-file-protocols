@@ -49,7 +49,7 @@ void memfile::close() noexcept (true) {}
 lfp_status memfile::readinto(void* p, std::int64_t len, std::int64_t* nread)
 noexcept (true) {
     const auto remaining = std::int64_t(this->mem.size() - this->pos);
-    const auto n = std::min(len, remaining);
+    const auto n = (std::min)(len, remaining);
     assert(n >= 0);
     assert(this->pos >= 0);
     assert(std::size_t(this->pos + n) <= this->mem.size());
