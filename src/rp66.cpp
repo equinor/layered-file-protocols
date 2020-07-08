@@ -644,6 +644,16 @@ void rp66::read_header_from_disk() noexcept (false) {
         throw protocol_fatal( fmt::format(msg, this->index.size() + 1) );
     }
 
+    /*
+     * According to specificiation, VR length is supposed to be at least 20
+     * bytes, but this doesn't always hold in real files. Hence introducing
+     * minimum check - VR length contains header length, so can't be < 4
+     */
+    if (head.length < 4) {
+        const auto msg = "rp66: Too short record length in Visible Record {}";
+        throw protocol_fatal( fmt::format(msg, this->index.size() + 1) );
+    }
+
     std::int64_t base = this->addr.base();
     if ( !this->index.empty() ) {
         base = this->index.last()->offset + this->index.last()->length;
