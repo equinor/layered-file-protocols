@@ -1,4 +1,5 @@
 #include <ciso646>
+#include <errno.h>
 
 #include <catch2/catch.hpp>
 
@@ -81,6 +82,49 @@ TEST_CASE(
 
     CHECK(!cfile);
     CHECK(!tif);
+}
+
+TEST_CASE(
+    "Operations on directory filehandle",
+    "[cfile][filehandle]") {
+
+    FILE* fp = std::fopen(".", "rb");
+    /* On some systems error might happen already after open. Then test is not
+     * relevant
+     */
+    if (fp) {
+        auto* cfile = lfp_cfile(fp);
+
+        SECTION( "Read on directory filehandle" ) {
+            auto buffer = std::vector< unsigned char >(4, 0xFF);
+            std::int64_t nread;
+            auto err = lfp_readinto(cfile, buffer.data(), 4, &nread);
+            CHECK(err == LFP_IOERROR);
+            auto msg = std::string(lfp_errormsg(cfile));
+            CHECK_THAT(msg, Contains("Is a directory"));
+        }
+
+        SECTION( "Seek on directory filehandle" ) {
+            /*
+            * It's not clear what happens on seek operation.
+            * On certain systems fseek gives no indication of error (no error
+            * code, no ferror), but errno gets set.
+            * Hence the best option seems to be not to test this setup on
+            * seek and leave delay dealing with errors to read
+            */
+
+            //auto err = lfp_seek(cfile, 1);
+        }
+
+        /*
+         * Operations in this test happen to set errno, which persists up until
+         * it is explicitly cleared. Hence manually unset it to prevent
+         * possible collision with other tests.
+         */
+        errno = 0;
+
+        lfp_close(cfile);
+    }
 }
 
 TEST_CASE(

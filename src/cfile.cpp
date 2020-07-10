@@ -8,6 +8,7 @@
 #include <memory>
 
 #include <stdio.h>
+#include <fmt/format.h>
 
 #include <lfp/protocol.hpp>
 #include <lfp/lfp.h>
@@ -81,8 +82,14 @@ noexcept (false) {
 
     if (this->eof())
         return LFP_EOF;
-    else
-        return LFP_OKINCOMPLETE;
+    else {
+        if (ferror(this->fp.get())) {
+            auto msg = "Unable to read from file: {}";
+            throw io_error(fmt::format(msg, std::strerror(errno)));
+        }
+        else
+            return LFP_OKINCOMPLETE;
+    }
 }
 
 int cfile::eof() const noexcept (false) {
