@@ -793,12 +793,16 @@ TEST_CASE_METHOD(
             CHECK(tell == 4);
         }
 
-        SECTION( "seek to border" ) {
+        SECTION( "seek to data border" ) {
             test_seek_and_read(rp66, 4, LFP_UNEXPECTED_EOF);
         }
 
         SECTION( "seek in declared data" ) {
             test_seek_and_read(rp66, 10, LFP_UNEXPECTED_EOF);
+        }
+
+        SECTION( "seek to declared border" ) {
+            test_seek_and_read(rp66, 12, LFP_EOF);
         }
 
         SECTION( "seek past declared data" ) {
@@ -847,12 +851,16 @@ TEST_CASE_METHOD(
         }
 
         // TODO: memfile for all the tests
-        SECTION( "seek to border" ) {
+        SECTION( "seek to data border" ) {
             test_seek_and_read(rp66, 4, LFP_OK, LFP_UNEXPECTED_EOF, this);
         }
 
         SECTION( "seek into declared data" ) {
             test_seek_and_read(rp66, 6, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek to declared border" ) {
+            test_seek_and_read(rp66, 8, LFP_OK, LFP_EOF, this);
         }
 
         SECTION( "seek past declared data" ) {
