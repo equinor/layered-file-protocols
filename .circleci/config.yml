@@ -247,10 +247,10 @@ jobs:
             }
             cmake -DCMAKE_CXX_FLAGS="/D_CRT_SECURE_NO_WARNINGS /EHsc" `
                   -DLFP_FMT_HEADER_ONLY=ON `
-                  -DCMAKE_BUILD_TYPE=< parameters.config >> `
+                  -DCMAKE_BUILD_TYPE=<< parameters.config >> `
                   -A $platform `
                   ..
-            cmake --build . --config < parameters.config >> --target install
+            cmake --build . --config << parameters.config >> --target install
             ctest -C << parameters.config >>
             
 workflows:
