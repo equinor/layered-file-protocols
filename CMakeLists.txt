@@ -141,11 +141,11 @@ if (NOT TARGET Catch2::Catch2)
 endif ()
 
 add_executable(unit-tests
-    test/cfile.cpp
+    #test/cfile.cpp
     test/main.cpp
-    test/memfile.cpp
+    #test/memfile.cpp
     test/tapeimage.cpp
-    test/rp66.cpp
+    #test/rp66.cpp
 )
 target_compile_definitions(unit-tests
     PRIVATE
