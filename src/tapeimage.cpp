@@ -488,10 +488,9 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
 
     while (not this->eof() and this->current.exhausted()) {
         if (this->current == this->index.last()) {
-            //const auto last = this->index.last();
-            const auto indexsize = this->index.size();
+            const auto last = this->index.last();
             this->read_header_from_disk();
-            if (indexsize != this->index.size())
+            if (last != this->index.last())
                 this->current.move(this->index.last());
         } else {
             const auto next = this->current.next_record();
@@ -690,12 +689,12 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
                            "support files larger than 4GB");
 
     if (this->index.contains(n)) {
-        //const auto next = this->index.find(n, this->current);
-        const auto pos  = this->index.index_of(this->index.find(n, this->current));
+        const auto next = this->index.find(n, this->current);
+        const auto pos  = this->index.index_of(next);
         const auto real_offset = this->addr.physical(n, pos);
 
         this->fp->seek(real_offset);
-        this->current.move(this->index.find(n, this->current));
+        this->current.move(next);
         assert(real_offset >= this->current.tell());
         this->current.move(real_offset - this->current.tell());
         return;
@@ -707,9 +706,8 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
      */
     this->current.move(this->index.last());
     while (true) {
-        //const auto last = this->index.last();
-        const auto indexsize = this->index.size();
-        const auto pos  = this->index.index_of(this->index.last());
+        const auto last = this->index.last();
+        const auto pos  = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
 
         /*
@@ -720,27 +718,26 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
          * would fail anyway, but it might be that this address is seek()'d to,
          * and a following readinto() never happens.
          */
-        if (real_offset == this->index.last()->next) {
-            this->fp->seek(real_offset);
+        if (real_offset == last->next) {
+            this->fp->seek(last->next);
             this->current.skip();
             break;
         }
 
-        if (real_offset < this->index.last()->next) {
+        if (real_offset < last->next) {
             this->fp->seek(real_offset);
             this->current.move(real_offset - this->current.tell());
             break;
         }
 
-        const auto lastnext = this->index.last()->next;
-        this->fp->seek(lastnext);
+        this->fp->seek(last->next);
         // skips the whole record even if file is truncated
         this->current.skip();
         this->read_header_from_disk();
-        if (indexsize != this->index.size())
+        if (last != this->index.last())
             this->current.move(this->index.last());
         if (this->eof()) {
-            if (indexsize == this->index.size())
+            if (last == this->index.last())
                 /**
                  * There was no new header read, meaning that data was over
                  * somewhere in the last record. However without explicit read
@@ -753,8 +750,8 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
              * over after it or it is a header of file type. Skip number of
              * bytes in current record corresponding to requested tell.
              */
-            //const auto last = this->index.last();
-            const auto pos  = this->index.index_of(this->index.last());
+            const auto last = this->index.last();
+            const auto pos  = this->index.index_of(last);
             const auto real_offset = this->addr.physical(n, pos);
             const auto skip = (std::min)(real_offset - this->current.tell(),
                                          this->current.bytes_left());
