@@ -709,7 +709,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     while (true) {
         const auto last = this->index.last();
         const auto indexsize = this->index.size();
-        const auto pos  = this->index.index_of(this->index.last());
+        const auto pos  = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
 
         /*
