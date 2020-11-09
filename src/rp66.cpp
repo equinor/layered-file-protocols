@@ -482,12 +482,12 @@ void rp66::seek(std::int64_t n) noexcept (false) {
      */
 
     if (this->index.contains(n)) {
-        const auto next = this->index.find(n, this->current);
-        const auto pos  = this->index.index_of(next);
+        //const auto next = this->index.find(n, this->current);
+        const auto pos  = this->index.index_of(this->index.find(n, this->current));
         const auto real_offset = this->addr.physical(n, pos);
 
         this->fp->seek(real_offset);
-        this->current.move(next);
+        this->current.move(this->index.find(n, this->current));
         this->current.move(real_offset - this->current.tell());
         return;
     }
@@ -497,10 +497,11 @@ void rp66::seek(std::int64_t n) noexcept (false) {
      */
     this->current.move(this->index.last());
     while (true) {
-        const auto last = this->index.last();
-        const auto pos  = this->index.index_of(last);
+        //const auto last = this->index.last();
+        const auto indexsize = this->index.size();
+        const auto pos  = this->index.index_of(this->index.last());
         const auto real_offset = this->addr.physical(n, pos);
-        const auto end = last->offset + last->length;
+        const auto end = this->index.last()->offset + this->index.last()->length;
 
         if (real_offset < end) {
             this->fp->seek(real_offset);
@@ -517,10 +518,10 @@ void rp66::seek(std::int64_t n) noexcept (false) {
         this->fp->seek(end);
         this->current.skip();
         this->read_header_from_disk();
-        if (last != this->index.last())
+        if (indexsize != this->index.size())
             this->current.move(this->index.last());
         if (this->eof()){
-            if (last == this->index.last())
+            if (indexsize == this->index.size())
                 /**
                  * There was no new header read, meaning that data was over
                  * somewhere in the last record. However without explicit read
@@ -533,8 +534,8 @@ void rp66::seek(std::int64_t n) noexcept (false) {
              * over after it. Skip number of bytes in current record
              * corresponding to requested tell.
              */
-            const auto last = this->index.last();
-            const auto pos  = this->index.index_of(last);
+            //const auto last = this->index.last();
+            const auto pos  = this->index.index_of(this->index.last());
             const auto real_offset = this->addr.physical(n, pos);
             const auto skip = (std::min)(real_offset - this->current.tell(),
                                          this->current.bytes_left());
@@ -553,9 +554,10 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
             return n;
 
         if (this->current == this->index.last()) {
-            const auto last = this->index.last();
+            //const auto last = this->index.last();
+            const auto indexsize = this->index.size();
             this->read_header_from_disk();
-            if (last != this->index.last())
+            if (indexsize != this->index.size())
                 this->current.move(this->index.last());
         } else {
             const auto next = this->current.next_record();
