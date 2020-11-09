@@ -707,9 +707,9 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
      */
     this->current.move(this->index.last());
     while (true) {
-        const auto last = this->index.last();
+        //const auto last = this->index.last();
         const auto indexsize = this->index.size();
-        const auto pos  = this->index.index_of(last);
+        const auto pos  = this->index.index_of(this->index.last());
         const auto real_offset = this->addr.physical(n, pos);
 
         /*
@@ -733,11 +733,11 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         }
 
         const auto lastnext = this->index.last()->next;
-        this->fp->seek(this->index.last()->next);
+        this->fp->seek(lastnext);
         // skips the whole record even if file is truncated
         this->current.skip();
         this->read_header_from_disk();
-        if (last != this->index.last())
+        if (indexsize != this->index.size())
             this->current.move(this->index.last());
         if (this->eof()) {
             if (indexsize == this->index.size())
