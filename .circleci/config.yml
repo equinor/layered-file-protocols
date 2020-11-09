@@ -168,24 +168,116 @@ jobs:
             export DOCKER_BUILDKIT=1
             docker build -t lfp --progress plain --build-arg image=<< parameters.setup_image_name >>  .
 
+  windows_build:
+    executor:
+      name: win/default
+      shell: powershell.exe
+    parameters:
+      platform:
+        description: x86 or x64
+        type: enum
+        enum: ["x86", "x64"]
+        # machine is 64-bit, but script attempts not to rely on it by default
+      config:
+        description: Release or Debug
+        type: enum
+        enum: ["Release", "Debug"]
+    steps:
+      - run:
+          name: explicitly disable autocrlf
+          # CircleCI doesn't disable autocrlf by default, so we need to do it ourselves
+          # if not executed, our binary files will be changed and tests will fail
+          command: |
+            git config --global core.autocrlf false
+      - checkout
+      - restore_cache:
+          key: vers1-cmake
+      - run:
+          name: install cmake
+          command: |
+            if (!(Test-Path "C:\Program Files\CMake")){
+              choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress
+            } else {
+              [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Program Files\CMake\bin",  `
+                                                    [EnvironmentVariableTarget]::Machine)
+            }
+            refreshenv
+      - save_cache:
+          key: vers1-cmake
+          paths:
+            - C:\Program Files\CMake
+      - restore_cache:
+          key: vers1-fmt-<< parameters.platform >>
+      - run:
+          name: install fmtlib
+          command: |
+            if (!(Test-Path "C:/Program Files (x86)/FMT")){
+              git clone https://github.com/fmtlib/fmt.git
+              mkdir fmt/build
+              cd fmt/build
+              if('<< parameters.platform >>' -eq 'x86') {
+                $platform = 'Win32'
+              } else {
+                $platform = 'x64'
+              }
+              cmake -DFMT_TEST=OFF `
+                    -DFMT_DOC=OFF `
+                    -DCMAKE_BUILD_TYPE=Release `
+                    -A $platform `
+                    ..
+              cmake --build . --config Release --target install
+            }
+      - save_cache:
+          key: vers1-fmt-<< parameters.platform >>
+          paths:
+            - C:/Program Files (x86)/FMT
+      - run:
+          name: install layered-file-protocol
+          command: |
+            git clone https://github.com/equinor/layered-file-protocols.git
+            mkdir build
+            cd build
+            if('<< parameters.platform >>' -eq 'x86') {
+              $platform = 'Win32'
+            } else {
+              $platform = 'x64'
+            }
+            cmake -DCMAKE_CXX_FLAGS="/D_CRT_SECURE_NO_WARNINGS /EHsc" `
+                  -DLFP_FMT_HEADER_ONLY=ON `
+                  -DCMAKE_BUILD_TYPE=< parameters.config >> `
+                  -A $platform `
+                  ..
+            cmake --build . --config < parameters.config >> --target install
+            ctest -C << parameters.config >>
+            
 workflows:
   version: 2
 
-  build:
+#   build:
+#     jobs:
+#       - gcc
+#       - clang
+#       - debug
+#       - docs-and-examples
+# 
+#   static-analysis:
+#     jobs:
+#       - scan-build
+# 
+#   runtime-analysis:
+#     jobs:
+#       - ubsan
+# 
+#   arch:
+#     jobs:
+#       - bigendian
+      
+  windows:
     jobs:
-      - gcc
-      - clang
-      - debug
-      - docs-and-examples
+      - windows_build:
+          name: build-config-<< matrix.config >>-win-<< matrix.platform >>
+          matrix:
+            parameters:
+              platform: ["x86", "x64"]
+              config: ["Release", "Debug"]
 
-  static-analysis:
-    jobs:
-      - scan-build
-
-  runtime-analysis:
-    jobs:
-      - ubsan
-
-  arch:
-    jobs:
-      - bigendian
