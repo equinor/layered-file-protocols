@@ -497,6 +497,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
      */
     this->current.move(this->index.last());
     while (true) {
+        const auto indexsize = this->index.size();
         const auto last = this->index.last();
         const auto pos  = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
@@ -517,10 +518,10 @@ void rp66::seek(std::int64_t n) noexcept (false) {
         this->fp->seek(end);
         this->current.skip();
         this->read_header_from_disk();
-        if (last != this->index.last())
+        if (indexsize != this->index.size())
             this->current.move(this->index.last());
         if (this->eof()){
-            if (last == this->index.last())
+            if (indexsize == this->index.size())
                 /**
                  * There was no new header read, meaning that data was over
                  * somewhere in the last record. However without explicit read
@@ -554,8 +555,9 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
 
         if (this->current == this->index.last()) {
             const auto last = this->index.last();
+            const auto indexsize = this->index.size();
             this->read_header_from_disk();
-            if (last != this->index.last())
+            if (indexsize != this->index.size())
                 this->current.move(this->index.last());
         } else {
             const auto next = this->current.next_record();
