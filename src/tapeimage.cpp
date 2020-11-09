@@ -733,7 +733,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         }
 
         const auto lastnext = this->index.last()->next;
-        this->fp->seek(lastnext);
+        this->fp->seek(this->index.last()->next);
         // skips the whole record even if file is truncated
         this->current.skip();
         this->read_header_from_disk();
