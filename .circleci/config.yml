@@ -245,7 +245,7 @@ jobs:
             } else {
               $platform = 'x64'
             }
-            cmake -DCMAKE_CXX_FLAGS="/D_CRT_SECURE_NO_WARNINGS /EHsc" `
+            cmake -DCMAKE_CXX_FLAGS="/D_CRT_SECURE_NO_WARNINGS" `
                   -DLFP_FMT_HEADER_ONLY=ON `
                   -DCMAKE_BUILD_TYPE=<< parameters.config >> `
                   -A $platform `
@@ -281,6 +281,6 @@ workflows:
           name: build-config-<< matrix.config >>-win-<< matrix.platform >>
           matrix:
             parameters:
-              platform: ["x86", "x64"]
+              platform: ["x86"]
               config: ["Release", "Debug"]
 
