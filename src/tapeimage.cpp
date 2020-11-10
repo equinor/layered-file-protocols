@@ -198,7 +198,7 @@ private:
     read_head current;
 
     std::int64_t readinto(void* dst, std::int64_t) noexcept (false);
-    void read_header_from_disk() noexcept (false);
+    bool read_header_from_disk() noexcept (false);
 
     lfp_status recovery = LFP_OK;
 };
@@ -488,9 +488,8 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
 
     while (not this->eof() and this->current.exhausted()) {
         if (this->current == this->index.last()) {
-            const auto last = this->index.last();
-            this->read_header_from_disk();
-            if (last != this->index.last())
+            auto updated = this->read_header_from_disk();
+            if (updated)
                 this->current.move(this->index.last());
         } else {
             const auto next = this->current.next_record();
@@ -529,7 +528,7 @@ int tapeimage::eof() const noexcept (true) {
     return this->fp->eof() or this->current->type == tapeimage::file;
 }
 
-void tapeimage::read_header_from_disk() noexcept (false) {
+bool tapeimage::read_header_from_disk() noexcept (false) {
     try {
         /*
          * This method should only be called when the underlying file pointer
@@ -537,6 +536,7 @@ void tapeimage::read_header_from_disk() noexcept (false) {
          */
         assert(this->index.last()->next == this->fp->tell());
     } catch (const lfp::error&) {
+        // tell can throw (for example, cloud). In that case disregard assert
     }
 
     std::int64_t n;
@@ -565,7 +565,7 @@ void tapeimage::read_header_from_disk() noexcept (false) {
                  * As some files do not have file tapemarks in the end,
                  * consider this to be an accepted situation.
                  */
-                return;
+                return false;
             else {
                 const auto msg = "tapeimage: unexpected EOF when reading header "
                                   "- got {} bytes";
@@ -679,6 +679,7 @@ void tapeimage::read_header_from_disk() noexcept (false) {
     }
 
     this->index.append(head);
+    return true;
 }
 
 void tapeimage::seek(std::int64_t n) noexcept (false) {
@@ -733,11 +734,11 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         this->fp->seek(last->next);
         // skips the whole record even if file is truncated
         this->current.skip();
-        this->read_header_from_disk();
-        if (last != this->index.last())
+        auto updated = this->read_header_from_disk();
+        if (updated)
             this->current.move(this->index.last());
         if (this->eof()) {
-            if (last == this->index.last())
+            if (not updated)
                 /**
                  * There was no new header read, meaning that data was over
                  * somewhere in the last record. However without explicit read
