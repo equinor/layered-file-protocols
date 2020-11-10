@@ -190,7 +190,7 @@ private:
     read_head current;
 
     std::int64_t readinto(void*, std::int64_t) noexcept (false);
-    void read_header_from_disk() noexcept (false);
+    bool read_header_from_disk() noexcept (false);
 };
 
 std::int64_t
@@ -516,11 +516,11 @@ void rp66::seek(std::int64_t n) noexcept (false) {
 
         this->fp->seek(end);
         this->current.skip();
-        this->read_header_from_disk();
-        if (last != this->index.last())
+        auto updated = this->read_header_from_disk();
+        if (updated)
             this->current.move(this->index.last());
         if (this->eof()){
-            if (last == this->index.last())
+            if (not updated)
                 /**
                  * There was no new header read, meaning that data was over
                  * somewhere in the last record. However without explicit read
@@ -553,9 +553,8 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
             return n;
 
         if (this->current == this->index.last()) {
-            const auto last = this->index.last();
-            this->read_header_from_disk();
-            if (last != this->index.last())
+            auto updated = this->read_header_from_disk();
+            if (updated)
                 this->current.move(this->index.last());
         } else {
             const auto next = this->current.next_record();
@@ -584,7 +583,7 @@ std::int64_t rp66::readinto(void* dst, std::int64_t len) noexcept (false) {
     return n;
 }
 
-void rp66::read_header_from_disk() noexcept (false) {
+bool rp66::read_header_from_disk() noexcept (false) {
     assert(this->current == this->index.last() and this->current.exhausted());
 
     std::int64_t n;
@@ -606,7 +605,7 @@ void rp66::read_header_from_disk() noexcept (false) {
              * perfectly fine to exhaust the last VR without EOF being set.
              */
             if (n == 0)
-                return;
+                return false;
             else {
                 const auto msg = "rp66: unexpected EOF when reading header "
                                  "- got {} bytes";
@@ -651,6 +650,7 @@ void rp66::read_header_from_disk() noexcept (false) {
     head.offset = base;
 
     this->index.append(head);
+    return true;
 }
 
 }
