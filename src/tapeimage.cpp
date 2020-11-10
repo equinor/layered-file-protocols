@@ -489,9 +489,8 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
     while (not this->eof() and this->current.exhausted()) {
         if (this->current == this->index.last()) {
             const auto last = this->index.last();
-            const auto indexsize = this->index.size();
             this->read_header_from_disk();
-            if (indexsize != this->index.size())
+            if (last != this->index.last())
                 this->current.move(this->index.last());
         } else {
             const auto next = this->current.next_record();
@@ -707,7 +706,6 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
      */
     this->current.move(this->index.last());
     while (true) {
-        const auto indexsize = this->index.size();
         const auto last = this->index.last();
         const auto pos  = this->index.index_of(last);
         const auto real_offset = this->addr.physical(n, pos);
@@ -736,10 +734,10 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
         // skips the whole record even if file is truncated
         this->current.skip();
         this->read_header_from_disk();
-        if (indexsize != this->index.size())
+        if (last != this->index.last())
             this->current.move(this->index.last());
         if (this->eof()) {
-            if (indexsize == this->index.size())
+            if (last == this->index.last())
                 /**
                  * There was no new header read, meaning that data was over
                  * somewhere in the last record. However without explicit read
