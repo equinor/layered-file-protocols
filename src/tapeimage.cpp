@@ -683,8 +683,84 @@ void tapeimage::read_header_from_disk() noexcept (false) {
 }
 
 void tapeimage::seek(std::int64_t n) noexcept (false) {
-    const auto start = this->index.begin(); // must be named
-    throw std::logic_error("whatever");
+    assert(n >= 0);
+
+    if ((std::numeric_limits<std::uint32_t>::max)() < n)
+        throw invalid_args("Too big seek offset. TIF protocol does not "
+                           "support files larger than 4GB");
+
+    if (this->index.contains(n)) {
+        const auto next = this->index.find(n, this->current);
+        const auto pos  = this->index.index_of(next);
+        const auto real_offset = this->addr.physical(n, pos);
+
+        this->fp->seek(real_offset);
+        this->current.move(next);
+        assert(real_offset >= this->current.tell());
+        this->current.move(real_offset - this->current.tell());
+        return;
+    }
+
+    /*
+     * The target is beyond what we have indexed, so chase the headers and add
+     * them to the index as we go
+     */
+    this->current.move(this->index.last());
+    while (true) {
+        const auto indexsize = this->index.size();
+        const auto last = this->index.last();
+        const auto pos  = this->index.index_of(last);
+        const auto real_offset = this->addr.physical(n, pos);
+
+        /*
+         * When doing a cold seek(n), and n happens to be at the start of a
+         * record, stop before reading the last header. This supports the case
+         * where the header is broken, and makes cold seek() consistent with
+         * readinto() to the same byte. If the header is broken, the next read
+         * would fail anyway, but it might be that this address is seek()'d to,
+         * and a following readinto() never happens.
+         */
+        if (real_offset == last->next) {
+            this->fp->seek(last->next);
+            this->current.skip();
+            break;
+        }
+
+        if (real_offset < last->next) {
+            this->fp->seek(real_offset);
+            this->current.move(real_offset - this->current.tell());
+            break;
+        }
+
+        this->fp->seek(last->next);
+        // skips the whole record even if file is truncated
+        this->current.skip();
+        this->read_header_from_disk();
+        if (indexsize != this->index.size())
+            this->current.move(this->index.last());
+        if (this->eof()) {
+            if (indexsize == this->index.size())
+                /**
+                 * There was no new header read, meaning that data was over
+                 * somewhere in the last record. However without explicit read
+                 * performed we do not know if the record was complete or not.
+                 */
+                return;
+
+            /**
+             * There was a valid header processed, but file is reported to be
+             * over after it or it is a header of file type. Skip number of
+             * bytes in current record corresponding to requested tell.
+             */
+            const auto last = this->index.last();
+            const auto pos  = this->index.index_of(last);
+            const auto real_offset = this->addr.physical(n, pos);
+            const auto skip = (std::min)(real_offset - this->current.tell(),
+                                         this->current.bytes_left());
+            this->current.move(skip);
+            return;
+        }
+    }
 }
 
 std::int64_t tapeimage::tell() const noexcept (false) {

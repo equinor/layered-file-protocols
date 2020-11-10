@@ -11,9 +11,7 @@
 int lfp_close(lfp_protocol* f) try {
     if (!f) return LFP_OK;
     f->close();
-    // before delete print statement
     delete f;
-    // after delete print statement
     return LFP_OK;
 } catch (lfp::error& e) {
     f->errmsg(e.what());
