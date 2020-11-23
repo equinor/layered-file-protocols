@@ -251,7 +251,7 @@ jobs:
                   -A $platform `
                   ..
             cmake --build . --config << parameters.config >> --target install
-            ctest -C << parameters.config >>
+            ctest -C << parameters.config >> --output-on-failure
             
 workflows:
   version: 2
