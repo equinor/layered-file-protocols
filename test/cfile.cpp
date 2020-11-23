@@ -229,3 +229,43 @@ TEST_CASE_METHOD(
         CHECK(!lfp_eof(f));
     }
 }
+
+TEST_CASE(
+    "> 2GB file",
+    "[cfile] [unsafe]") {
+
+    const auto GB = 1024 * 1024 * 1024;
+    const std::string s = "Big, 2GB file";
+    const auto slen = s.length();
+
+    const auto begin = 2*GB -1;
+
+    std::FILE* fp = std::tmpfile();
+    std::fseek(fp, begin, SEEK_SET);
+    std::fputs(s.c_str(), fp);
+    std::rewind(fp);
+
+    auto* cfile = lfp_cfile(fp);
+    auto err = lfp_seek(cfile, begin + slen - 4);
+
+    const auto expected = std::vector< unsigned char >{
+         0x66, 0x69, 0x6C, 0x65,
+    };
+
+    std::int64_t bytes_read = -1;
+    auto out = std::vector< unsigned char >(4, 0xFF);
+    err = lfp_readinto(cfile, out.data(), 4, &bytes_read);
+
+    CHECK(bytes_read == 4);
+    CHECK(err == LFP_OK);
+    CHECK_THAT(out, Equals(expected));
+
+    std::int64_t tell;
+    err = lfp_tell(cfile, &tell);
+    CHECK(err == LFP_OK);
+    CHECK(tell == begin + slen);
+
+    //should delete the file
+    err = lfp_close(cfile);
+    CHECK(err == LFP_OK);
+}
