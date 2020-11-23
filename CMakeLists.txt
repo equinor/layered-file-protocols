@@ -87,6 +87,9 @@ target_compile_options(lfp
     PRIVATE
         $<$<CONFIG:Debug>:${lfp-warnings-c++}>
         $<$<CONFIG:RelWithDebInfo>:${lfp-warnings-c++}>
+        # Assures recommended stack unwinding on MVSC.
+        # Beyond users control as without it lfp won't work correctly
+        $<$<CXX_COMPILER_ID:MSVC>:/EHsc>
 )
 
 target_compile_definitions(lfp
