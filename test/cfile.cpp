@@ -273,3 +273,96 @@ TEST_CASE_METHOD(
         CHECK(!lfp_eof(f));
     }
 }
+
+TEST_CASE(
+    "> 2GB file",
+    "[cfile] [2GB] [long]") {
+
+    const std::int64_t GB = 1024 * 1024 * 1024;
+    const std::string s = "Big, 2GB file";
+    const auto slen = s.length();
+    const std::int64_t begin = 2*GB - 1;
+
+    std::FILE* fp = std::tmpfile();
+    std::fseek(fp, begin, SEEK_SET);
+    std::fputs(s.c_str(), fp);
+    std::rewind(fp);
+
+    const auto expected = std::vector< unsigned char > {
+         0x66, 0x69, 0x6C, 0x65,
+    };
+
+    SECTION( "seek and read beyond 2GB" ) {
+        auto* cfile = lfp_cfile(fp);
+        auto err = lfp_seek(cfile, begin + slen - 4);
+        CHECK(err == LFP_OK);
+
+        std::int64_t bytes_read = -1;
+        auto out = std::vector< unsigned char >(4, 0xFF);
+        err = lfp_readinto(cfile, out.data(), 4, &bytes_read);
+
+        CHECK(bytes_read == 4);
+        CHECK(err == LFP_OK);
+        CHECK_THAT(out, Equals(expected));
+
+        std::int64_t tell;
+        err = lfp_tell(cfile, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == begin + slen);
+
+        //should delete the file
+        err = lfp_close(cfile);
+        CHECK(err == LFP_OK);
+    }
+
+    SECTION( "seek to +2GB and -2GB" ) {
+        auto* cfile = lfp_cfile(fp);
+
+        std::int64_t tell;
+
+        auto err = lfp_seek(cfile, begin + slen);
+        CHECK(err == LFP_OK);
+        err = lfp_tell(cfile, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == begin + slen);
+
+        err = lfp_seek(cfile, 1);
+        CHECK(err == LFP_OK);
+        err = lfp_tell(cfile, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 1);
+
+        //should delete the file
+        err = lfp_close(cfile);
+        CHECK(err == LFP_OK);
+    }
+
+    SECTION( "open file near 2GB mark" ) {
+        std::fseek(fp, begin, SEEK_SET);
+
+        auto* cfile = lfp_cfile(fp);
+        std::int64_t tell;
+        auto err = lfp_tell(cfile, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 0);
+
+        err = lfp_seek(cfile, slen - 4);
+        CHECK(err == LFP_OK);
+
+        std::int64_t bytes_read = -1;
+        auto out = std::vector< unsigned char >(4, 0xFF);
+        err = lfp_readinto(cfile, out.data(), 4, &bytes_read);
+
+        CHECK(bytes_read == 4);
+        CHECK(err == LFP_OK);
+        CHECK_THAT(out, Equals(expected));
+
+        err = lfp_tell(cfile, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == slen);
+
+        //should delete the file
+        err = lfp_close(cfile);
+        CHECK(err == LFP_OK);
+    }
+}

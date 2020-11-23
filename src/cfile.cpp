@@ -57,6 +57,32 @@ std::int64_t long_tell(std::FILE* fp) {
     return dispatch_tell< long >(fp);
 }
 
+template <typename T,
+    typename std::enable_if< sizeof(T) != sizeof(long long), int>::type = 0>
+int dispatch_seek(std::FILE* fp, std::int64_t pos) {
+    #if HAVE_FSEEKO
+        return fseeko(fp, pos, SEEK_SET);
+    #elif HAVE_FSEEKI64
+        return _fseeki64(fp, pos, SEEK_SET);
+    #else
+        static_assert(
+            sizeof(T) == sizeof(long long),
+            "no 64-bit alternative to fseek() found, and long is too small"
+        );
+    #endif
+    return -1;
+}
+
+template <typename T,
+    typename std::enable_if< sizeof(T) == sizeof(long long), int>::type = 0>
+int dispatch_seek(std::FILE* fp, std::int64_t pos) {
+    return std::fseek(fp, pos, SEEK_SET);
+}
+
+int long_seek(std::FILE* fp, std::int64_t pos) {
+    return dispatch_seek< long >(fp, pos);
+}
+
 /*
  * This is really just an interface adaptor for the C stdlib FILE
  */
@@ -143,10 +169,7 @@ void cfile::seek(std::int64_t n) noexcept (false) {
 
     const auto pos = n + this->zero;
     assert(pos >= 0);
-    // TODO: handle fseek failure when pos > limits< long >::max()
-    // e.g. by converting to relative seeks
-    assert(pos < std::numeric_limits< long >::max());
-    const auto err = std::fseek(this->fp.get(), pos, SEEK_SET);
+    const auto err = long_seek(this->fp.get(), pos);
     if (err)
         throw io_error(std::strerror(errno));
 }
