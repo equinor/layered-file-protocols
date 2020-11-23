@@ -256,12 +256,12 @@ jobs:
 workflows:
   version: 2
 
-#   build:
-#     jobs:
-#       - gcc
-#       - clang
-#       - debug
-#       - docs-and-examples
+  build:
+    jobs:
+      #- gcc
+      #- clang
+      - debug
+      #- docs-and-examples
 # 
 #   static-analysis:
 #     jobs:
@@ -274,13 +274,13 @@ workflows:
 #   arch:
 #     jobs:
 #       - bigendian
-      
-  windows:
-    jobs:
-      - windows_build:
-          name: build-config-<< matrix.config >>-win-<< matrix.platform >>
-          matrix:
-            parameters:
-              platform: ["x86"]
-              config: ["Release", "Debug"]
+#       
+#   windows:
+#     jobs:
+#       - windows_build:
+#           name: build-config-<< matrix.config >>-win-<< matrix.platform >>
+#           matrix:
+#             parameters:
+#               platform: ["x86"]
+#               config: ["Release", "Debug"]
 
