@@ -87,6 +87,8 @@ target_compile_options(lfp
     PRIVATE
         $<$<CONFIG:Debug>:${lfp-warnings-c++}>
         $<$<CONFIG:RelWithDebInfo>:${lfp-warnings-c++}>
+        # TODO comment
+        $<$<CXX_COMPILER_ID:MSVC>:/EHsc>
 )
 
 target_compile_definitions(lfp
