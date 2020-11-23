@@ -234,11 +234,11 @@ TEST_CASE(
     "> 2GB file",
     "[cfile] [unsafe]") {
 
-    const auto GB = 1024 * 1024 * 1024;
+    const std::int64_t GB = 1024 * 1024 * 1024;
     const std::string s = "Big, 2GB file";
     const auto slen = s.length();
 
-    const auto begin = 2*GB -1;
+    const std::int64_t begin = 2*GB -1;
 
     std::FILE* fp = std::tmpfile();
     std::fseek(fp, begin, SEEK_SET);

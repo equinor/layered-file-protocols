@@ -275,12 +275,12 @@ workflows:
 #     jobs:
 #       - bigendian
 #       
-#   windows:
-#     jobs:
-#       - windows_build:
-#           name: build-config-<< matrix.config >>-win-<< matrix.platform >>
-#           matrix:
-#             parameters:
-#               platform: ["x86"]
-#               config: ["Release", "Debug"]
+  windows:
+    jobs:
+      - windows_build:
+          name: build-config-<< matrix.config >>-win-<< matrix.platform >>
+          matrix:
+            parameters:
+              platform: ["x86", "x64"]
+              config: ["Release", "Debug"]
 
