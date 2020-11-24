@@ -450,7 +450,7 @@ noexcept (false) {
             if(this->current.exhausted())
                 return LFP_EOF;
             else {
-                const auto msg = "tapeimage: unexpected EOF when reading record "
+                const auto msg = "rp66: unexpected EOF when reading record "
                                 "- got {} bytes, expected there to be {} more";
                 throw unexpected_eof(fmt::format(msg, n, this->current.bytes_left()));
             }
