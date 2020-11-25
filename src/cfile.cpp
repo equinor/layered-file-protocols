@@ -136,7 +136,7 @@ std::int64_t cfile::tell() const noexcept (false) {
     #ifdef HAS_FTELLO
         off = ftello(this->fp.get());
     #elif HAS_FTELLI64
-        off = _ftelli64(this->fp.get());
+        off = ftelli64(this->fp.get());
     #else
         static_assert(false, "neither ftello no _ftelli64 are available");
     #endif
