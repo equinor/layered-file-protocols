@@ -6,13 +6,56 @@
 #include <cstring>
 #include <limits>
 #include <memory>
+#include <type_traits>
 
 #include <fmt/format.h>
+#include <stdio.h>
 
 #include <lfp/protocol.hpp>
 #include <lfp/lfp.h>
 
 namespace lfp { namespace {
+
+/*
+ * As lfp is meant to work with files over 2GB, we have to deal with tell & seek
+ * in a special way.
+ *
+ * Standard functions fseek/ftell accept or return long value. However, long
+ * isn't always enough. On certain systems long is not defined as a 64-bit
+ * number, but as a 32-bit one. Mainly it happens on Windows, both 64-bit and
+ * 32-bit. That means that we must work around it to allow processing big files.
+ *
+ * Fortunatelly, there exist compiler-specific fseek/ftell methods which we can
+ * use instead. By using templates we make sure that compiler-specific functions
+ * are used only when standard ones are not enough.
+ *
+ */
+
+template <typename T>
+typename std::enable_if< sizeof(T) != sizeof(long long), std::int64_t >::type
+dispatch_tell(std::FILE* fp) {
+    #if HAVE_FTELLO
+        return ftello(fp);
+    #elif HAVE_FTELLI64
+        return _ftelli64(fp);
+    #else
+        static_assert(
+            sizeof(T) == sizeof(long long),
+            "no 64-bit alternative to ftell() found, and long is too small"
+        );
+    #endif
+    return -1;
+}
+
+template <typename T>
+typename std::enable_if< sizeof(T) == sizeof(long long), std::int64_t >::type
+dispatch_tell(std::FILE* fp) {
+    return std::ftell(fp);
+}
+
+std::int64_t long_tell(std::FILE* fp) {
+    return dispatch_tell< long >(fp);
+}
 
 /*
  * This is really just an interface adaptor for the C stdlib FILE
@@ -21,7 +64,7 @@ class cfile : public lfp_protocol {
 public:
     cfile(std::FILE* f) :
         fp(f),
-        zero(std::ftell(f)),
+        zero(long_tell(f)),
         ftell_errmsg(zero != -1 ? "" : std::strerror(errno))
     {}
 
@@ -112,7 +155,7 @@ std::int64_t cfile::tell() const noexcept (false) {
     if (this->zero == -1)
         throw not_supported(this->ftell_errmsg);
 
-    const auto off = std::ftell(this->fp.get());
+    std::int64_t off = long_tell(this->fp.get());
     if (off == -1)
         throw io_error(std::strerror(errno));
     return off - this->zero;
