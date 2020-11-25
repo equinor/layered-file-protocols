@@ -95,16 +95,6 @@ int cfile::eof() const noexcept (false) {
 }
 
 void cfile::seek(std::int64_t n) noexcept (false) {
-    static_assert(
-            std::numeric_limits< std::int64_t >::min() ==
-            std::numeric_limits< long long >::min()
-        and
-            std::numeric_limits< std::int64_t >::max() ==
-            std::numeric_limits< long long >:: max()
-        ,
-        "assuming long long is 64-bit. implement seek!"
-    );
-
     if (this->zero == -1)
         throw not_supported(this->ftell_errmsg);
 
