@@ -281,6 +281,6 @@ workflows:
           name: build-config-<< matrix.config >>-win-<< matrix.platform >>
           matrix:
             parameters:
-              platform: ["x86", "x64"]
+              platform: ["x64"]
               config: ["Release", "Debug"]
 
