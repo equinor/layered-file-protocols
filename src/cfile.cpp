@@ -132,15 +132,7 @@ std::int64_t cfile::tell() const noexcept (false) {
     if (this->zero == -1)
         throw not_supported(this->ftell_errmsg);
 
-    std::int64_t off;
-    #ifdef HAS_FTELLO
-        off = ftello(this->fp.get());
-    #elif HAS_FTELLI64
-        off = ftelli64(this->fp.get());
-    #else
-        static_assert(false, "neither ftello no _ftelli64 are available");
-    #endif
-
+    const auto off = std::ftell(this->fp.get());
     if (off == -1)
         throw io_error(std::strerror(errno));
     return off - this->zero;
