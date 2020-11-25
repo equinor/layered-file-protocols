@@ -110,22 +110,14 @@ void cfile::seek(std::int64_t n) noexcept (false) {
     if (this->zero == -1)
         throw not_supported(this->ftell_errmsg);
 
-    auto pos = n + this->zero;
+    const auto pos = n + this->zero;
     assert(pos >= 0);
-
-    const auto err = std::fseek(this->fp.get(), 0, SEEK_SET);
+    // TODO: handle fseek failure when pos > limits< long >::max()
+    // e.g. by converting to relative seeks
+    assert(pos < std::numeric_limits< long >::max());
+    const auto err = std::fseek(this->fp.get(), pos, SEEK_SET);
     if (err)
         throw io_error(std::strerror(errno));
-
-    while (pos > 0) {
-        long seekto = pos;
-        if (pos > std::numeric_limits< long >::max())
-            seekto = std::numeric_limits< long >::max();
-        const auto err = std::fseek(this->fp.get(), seekto, SEEK_CUR);
-        if (err)
-            throw io_error(std::strerror(errno));
-        pos -= std::numeric_limits< long >::max();
-    }
 }
 
 std::int64_t cfile::tell() const noexcept (false) {
