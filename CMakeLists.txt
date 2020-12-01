@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 project(layered-file-protocols LANGUAGES C CXX)
 
+include(CheckFunctionExists)
 include(CTest)
 include(GNUInstallDirs)
 include(TestBigEndian)
@@ -63,6 +64,11 @@ if (NOT MSVC)
     )
 endif()
 
+check_function_exists(_ftelli64 HAVE_FTELLI64)
+check_function_exists(_fseeki64 HAVE_FSEEKI64)
+check_function_exists(ftello HAVE_FTELLO)
+check_function_exists(fseeko HAVE_FSEEKO)
+
 add_library(lfp
     src/lfp.cpp
     src/cfile.cpp
@@ -87,12 +93,19 @@ target_compile_options(lfp
     PRIVATE
         $<$<CONFIG:Debug>:${lfp-warnings-c++}>
         $<$<CONFIG:RelWithDebInfo>:${lfp-warnings-c++}>
+        # Assures recommended stack unwinding on MVSC.
+        # Beyond users control as without it lfp won't work correctly
+        $<$<CXX_COMPILER_ID:MSVC>:/EHsc>
 )
 
 target_compile_definitions(lfp
     PRIVATE
         $<$<BOOL:${LFP_BIG_ENDIAN}>:IS_BIG_ENDIAN>
         $<$<NOT:$<BOOL:${LFP_BIG_ENDIAN}>>:IS_LITTLE_ENDIAN>
+        $<$<BOOL:${HAVE_FTELLI64}>:HAVE_FTELLI64>
+        $<$<BOOL:${HAVE_FSEEKI64}>:HAVE_FSEEKI64>
+        $<$<BOOL:${HAVE_FTELLO}>:HAVE_FTELLO>
+        $<$<BOOL:${HAVE_FSEEKO}>:HAVE_FSEEKO>
         ${fmtlib-comp-def}
 )
 

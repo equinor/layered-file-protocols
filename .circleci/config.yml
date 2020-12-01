@@ -1,5 +1,8 @@
 version: 2.1
 
+orbs:
+  win: circleci/windows@2.2.0
+
 commands:
   install_build_deps:
     parameters:
@@ -168,6 +171,93 @@ jobs:
             export DOCKER_BUILDKIT=1
             docker build -t lfp --progress plain --build-arg image=<< parameters.setup_image_name >>  .
 
+  windows_build:
+    executor:
+      name: win/default
+      shell: powershell.exe
+    parameters:
+      platform:
+        description: x86 or x64
+        type: enum
+        enum: ["x86", "x64"]
+        # machine is 64-bit, but script attempts not to rely on it by default
+      config:
+        description: Release or Debug
+        type: enum
+        enum: ["Release", "Debug"]
+    steps:
+      - run:
+          name: explicitly disable autocrlf
+          # CircleCI doesn't disable autocrlf by default, so we need to do it ourselves
+          # if not executed, our binary files will be changed and tests will fail
+          command: |
+            git config --global core.autocrlf false
+      - checkout
+      - run:
+          name: set platform-dependent environment variables
+          command: |
+            if('<< parameters.platform >>' -eq 'x86') {
+              $programfilesdir = "C:/Program Files (x86)"
+              $generatorplatform = 'Win32'
+            } else {
+              $programfilesdir = "C:/Program Files"
+              $generatorplatform = 'x64'
+            }
+            [Environment]::SetEnvironmentVariable("programfilesdir", $programfilesdir,  `
+                                                  [EnvironmentVariableTarget]::Machine)
+            [Environment]::SetEnvironmentVariable("generatorplatform", $generatorplatform,  `
+                                                  [EnvironmentVariableTarget]::Machine)
+      - restore_cache:
+          key: vers2-cmake
+      - run:
+          name: install cmake
+          command: |
+            if (!(Test-Path "C:\Program Files\CMake")){
+              choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress
+            } else {
+              [Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Program Files\CMake\bin",  `
+                                                    [EnvironmentVariableTarget]::Machine)
+            }
+            refreshenv
+      - save_cache:
+          key: vers2-cmake
+          paths:
+            - C:\Program Files\CMake
+      - restore_cache:
+          key: vers2-fmt-<< parameters.platform >>
+      - run:
+          name: install fmtlib
+          command: |
+            $fmtpath = $env:programfilesdir + "/FMT"
+            if (!(Test-Path $fmtpath)) {
+              git clone https://github.com/fmtlib/fmt.git
+              mkdir fmt/build
+              cd fmt/build
+              cmake -DFMT_TEST=OFF `
+                    -DFMT_DOC=OFF `
+                    -DCMAKE_BUILD_TYPE=Release `
+                    -A $env:generatorplatform `
+                    ..
+              cmake --build . --config Release --target install
+            }
+      - save_cache:
+          key: vers2-fmt-<< parameters.platform >>
+          paths:
+            - C:/Program Files (x86)/FMT
+            - C:/Program Files/FMT
+      - run:
+          name: build lfp
+          command: |
+            mkdir build
+            cd build
+            cmake -DCMAKE_CXX_FLAGS="/D_CRT_SECURE_NO_WARNINGS" `
+                  -DLFP_FMT_HEADER_ONLY=ON `
+                  -DCMAKE_BUILD_TYPE=<< parameters.config >> `
+                  -A $env:generatorplatform `
+                  ..
+            cmake --build . --config << parameters.config >> --target install
+            ctest -C << parameters.config >> --output-on-failure
+
 workflows:
   version: 2
 
@@ -189,3 +279,13 @@ workflows:
   arch:
     jobs:
       - bigendian
+
+  windows:
+    jobs:
+      - windows_build:
+          name: build-config-<< matrix.config >>-win-<< matrix.platform >>
+          matrix:
+            parameters:
+              platform: ["x86", "x64"]
+              config:   ["Release", "Debug"]
+

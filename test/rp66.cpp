@@ -175,32 +175,62 @@ TEST_CASE(
 }
 
 TEST_CASE(
-    "Wrong format-version is fatal"
+    "VR errors"
     "[visible envelope][rp66]") {
 
-    const auto file = std::vector< unsigned char > {
-        /* First Visible Envelope */
-        0x00, 0x06,
-        0xFF, 0x01,
-        /* Body */
-        0x01, 0x02,
-        /* Second Visible Envelope */
-        0x00, 0x06,
-        0xFE, 0x01,
-        /* Body */
-        0x09, 0x0A,
-    };
 
-    auto* mem = lfp_memfile_openwith(file.data(), file.size());
-    auto* rp66 = lfp_rp66_open(mem);
+    SECTION( "wrong format-version is fatal" ) {
+        const auto file = std::vector< unsigned char > {
+            /* First Visible Envelope */
+            0x00, 0x06,
+            0xFF, 0x01,
+            /* Body */
+            0x01, 0x02,
+            /* Second Visible Envelope */
+            0x00, 0x06,
+            0xFE, 0x01,
+            /* Body */
+            0x09, 0x0A,
+        };
 
-    auto out = std::vector< unsigned char >(4, 0xFF);
-    std::int64_t bytes_read = -1;
-    const auto err = lfp_readinto(rp66, out.data(), 4, &bytes_read);
-    CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
-    CHECK(bytes_read == 2);
+        auto* mem = lfp_memfile_openwith(file.data(), file.size());
+        auto* rp66 = lfp_rp66_open(mem);
 
-    lfp_close(rp66);
+        auto out = std::vector< unsigned char >(4, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(rp66, out.data(), 4, &bytes_read);
+        CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
+        CHECK(bytes_read == 2);
+
+        lfp_close(rp66);
+    }
+
+    SECTION( "too short length of VR" ) {
+        const auto contents = std::vector< unsigned char > {
+            0x00, 0x0C,
+            0xFF, 0x01,
+
+            0x01, 0x02, 0x03, 0x04,
+            0x00, 0x00, 0x00, 0x00,
+
+            0x00, 0x00,
+            0xFF, 0x01,
+
+            0x00, 0x00, 0x00, 0x00
+        };
+
+        auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
+        auto* rp66 = lfp_rp66_open(mem);
+
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        const auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+        CHECK(err == LFP_PROTOCOL_FATAL_ERROR);
+        CHECK(bytes_read == 8);
+
+        lfp_close(rp66);
+    }
+
 }
 
 TEST_CASE_METHOD(
@@ -763,12 +793,16 @@ TEST_CASE_METHOD(
             CHECK(tell == 4);
         }
 
-        SECTION( "seek to border" ) {
+        SECTION( "seek to data border" ) {
             test_seek_and_read(rp66, 4, LFP_UNEXPECTED_EOF);
         }
 
         SECTION( "seek in declared data" ) {
             test_seek_and_read(rp66, 10, LFP_UNEXPECTED_EOF);
+        }
+
+        SECTION( "seek to declared border" ) {
+            test_seek_and_read(rp66, 12, LFP_EOF);
         }
 
         SECTION( "seek past declared data" ) {
@@ -817,12 +851,16 @@ TEST_CASE_METHOD(
         }
 
         // TODO: memfile for all the tests
-        SECTION( "seek to border" ) {
+        SECTION( "seek to data border" ) {
             test_seek_and_read(rp66, 4, LFP_OK, LFP_UNEXPECTED_EOF, this);
         }
 
         SECTION( "seek into declared data" ) {
             test_seek_and_read(rp66, 6, LFP_OK, LFP_UNEXPECTED_EOF, this);
+        }
+
+        SECTION( "seek to declared border" ) {
+            test_seek_and_read(rp66, 8, LFP_OK, LFP_EOF, this);
         }
 
         SECTION( "seek past declared data" ) {

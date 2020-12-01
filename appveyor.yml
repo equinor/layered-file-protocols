@@ -2,6 +2,7 @@ version: 1.0.{build}
 
 configuration:
     - Release
+    - Debug
 
 os: Visual Studio 2015
 image: Visual Studio 2015
@@ -22,7 +23,7 @@ build_script:
     - ps: pushd build
     - cmake %APPVEYOR_BUILD_FOLDER%
             -G %generator%
-            -DCMAKE_CXX_FLAGS="/D_CRT_SECURE_NO_WARNINGS /EHsc"
+            -DCMAKE_CXX_FLAGS="/D_CRT_SECURE_NO_WARNINGS"
             -DLFP_FMT_HEADER_ONLY=ON
             -DCMAKE_TOOLCHAIN_FILE=C:/Tools/vcpkg/scripts/buildsystems/vcpkg.cmake
     - cmake --build .  --config %configuration% --target install
