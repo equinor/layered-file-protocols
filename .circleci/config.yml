@@ -185,6 +185,11 @@ jobs:
         description: Release or Debug
         type: enum
         enum: ["Release", "Debug"]
+      fmt-header-only:
+        description: Build with fmt::fmt-header-only
+        type: enum
+        enum: ["ON", "OFF"]
+        default: "ON"
     steps:
       - run:
           name: explicitly disable autocrlf
@@ -248,10 +253,11 @@ jobs:
       - run:
           name: build lfp
           command: |
+
             mkdir build
             cd build
             cmake -DCMAKE_CXX_FLAGS="/D_CRT_SECURE_NO_WARNINGS" `
-                  -DLFP_FMT_HEADER_ONLY=ON `
+                  -DLFP_FMT_HEADER_ONLY=<< parameters.fmt-header-only >> `
                   -DCMAKE_BUILD_TYPE=<< parameters.config >> `
                   -A $env:generatorplatform `
                   ..
@@ -288,4 +294,10 @@ workflows:
             parameters:
               platform: ["x86", "x64"]
               config:   ["Release", "Debug"]
+
+      - windows_build:
+          name: public-fmtlib
+          platform:        "x64"
+          config:          "Release"
+          fmt-header-only: "OFF"
 
