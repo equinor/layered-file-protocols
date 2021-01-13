@@ -2,6 +2,9 @@
 #include <ciso646>
 #include <limits>
 #include <vector>
+#include <cstring>
+#include <cstdint>
+#include <algorithm>
 
 #include <fmt/format.h>
 
