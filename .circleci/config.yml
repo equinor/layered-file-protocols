@@ -264,6 +264,34 @@ jobs:
             cmake --build . --config << parameters.config >> --target install
             ctest -C << parameters.config >> --output-on-failure
 
+  macos_build:
+    macos:
+      # no default macos version, will have to be updated manually
+      xcode: 12.3.0
+    parameters:
+      config:
+        description: Release or Debug
+        type: enum
+        enum: ["Release", "Debug"]
+        default: "Release"
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: brew install cmake fmt
+      - run:
+          name: build lfp
+          command: |
+            mkdir build
+            cd build
+            cmake -DLFP_FMT_HEADER_ONLY=ON -DCMAKE_BUILD_TYPE=<< parameters.config >> ..
+            cmake --build . --config << parameters.config >> --target install
+      - run:
+          name: test lfp
+          command: |
+            cd build
+            ctest -C << parameters.config >> --verbose
+
 workflows:
   version: 2
 
@@ -301,3 +329,7 @@ workflows:
           config:          "Release"
           fmt-header-only: "OFF"
 
+  osx:
+    jobs:
+      - macos_build:
+          name: build_mac
