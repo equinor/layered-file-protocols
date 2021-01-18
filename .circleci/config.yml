@@ -60,7 +60,7 @@ commands:
           name: Test
           command: |
             cd build
-            ctest --output-on-failure
+            ctest --verbose
 
 jobs:
   gcc:
@@ -253,7 +253,6 @@ jobs:
       - run:
           name: build lfp
           command: |
-
             mkdir build
             cd build
             cmake -DCMAKE_CXX_FLAGS="/D_CRT_SECURE_NO_WARNINGS" `
@@ -262,7 +261,7 @@ jobs:
                   -A $env:generatorplatform `
                   ..
             cmake --build . --config << parameters.config >> --target install
-            ctest -C << parameters.config >> --output-on-failure
+            ctest -C << parameters.config >> --verbose
 
   macos_build:
     macos:
