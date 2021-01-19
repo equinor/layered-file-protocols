@@ -722,7 +722,7 @@ TEST_CASE_METHOD(
 
             CHECK(lfp_eof(tif));
 
-            err == lfp_seek(tif, 0);
+            lfp_seek(tif, 0);
             CHECK(!lfp_eof(tif));
 
             bytes_read = -1;

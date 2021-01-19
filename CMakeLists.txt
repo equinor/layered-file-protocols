@@ -160,6 +160,13 @@ add_executable(unit-tests
     test/tapeimage.cpp
     test/rp66.cpp
 )
+
+target_compile_options(unit-tests
+    BEFORE
+    PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/EHsc>
+)
+
 target_compile_definitions(unit-tests
     PRIVATE
         $<$<BOOL:${LFP_BIG_ENDIAN}>:IS_BIG_ENDIAN>
