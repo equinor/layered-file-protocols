@@ -272,6 +272,17 @@ TEST_CASE_METHOD(
         CHECK(err == LFP_OK);
         CHECK(!lfp_eof(f));
     }
+
+    SECTION( "eof not repored on seek to start after read past-end" ) {
+        std::int64_t nread = -1;
+        auto err = lfp_readinto(f, out.data(), out.size() +1, &nread);
+        REQUIRE(err == LFP_EOF);
+        REQUIRE(lfp_eof(f));
+
+        err = lfp_seek(f, 0);
+        CHECK(err == LFP_OK);
+        CHECK(!lfp_eof(f));
+    }
 }
 
 TEST_CASE(

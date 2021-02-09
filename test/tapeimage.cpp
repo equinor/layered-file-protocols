@@ -505,6 +505,18 @@ TEST_CASE(
         CHECK(tell == 8);
     }
 
+    SECTION( "Seek to start after read past eof" ) {
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+        REQUIRE(err == LFP_EOF);
+        REQUIRE(lfp_eof(tif));
+
+        err = lfp_seek(tif, 0);
+        CHECK(err == LFP_OK);
+        CHECK(!lfp_eof(tif));
+    }
+
     SECTION( "Read past eof - after a seek past eof" ) {
         auto err = lfp_seek(tif, 10);
         CHECK(err == LFP_OK);

@@ -92,6 +92,22 @@ TEST_CASE_METHOD(
 
 TEST_CASE_METHOD(
         random_memfile,
+        "EOF not repored on seek to start after read past-end",
+        "[mem]") {
+    std::int64_t nread = 0;
+    auto err = lfp_readinto(f, out.data(), 2*out.size(), &nread);
+
+    REQUIRE(err == LFP_EOF);
+    REQUIRE(lfp_eof(f));
+
+    err = lfp_seek(f, 0);
+    CHECK(err == LFP_OK);
+    CHECK(!lfp_eof(f));
+
+}
+
+TEST_CASE_METHOD(
+        random_memfile,
         "Doing multiple reads yields the full file",
         "[mem]") {
     test_split_read(this);
