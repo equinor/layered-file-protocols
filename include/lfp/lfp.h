@@ -217,11 +217,22 @@ int lfp_seek(lfp_protocol*, int64_t n);
 
 /** Get current position
  *
- * Obtain the current value of the file position. The value is absolute,
- * 0-based, in bytes.
+ * Obtain the current logical value of the file position. The value is
+ * relative to the used protocol, 0-based, in bytes.
  */
 LFP_API
 int lfp_tell(lfp_protocol*, int64_t* n);
+
+/** Get current physical position
+ *
+ * Obtain the current physical value of the file position. The value is
+ * absolute with regards to the underlying handle of the leaf protocol, 0-based,
+ * in bytes.
+ * As a consequence, same value will be returned for all the protocols stacked
+ * together.
+ */
+LFP_API
+int lfp_ptell(lfp_protocol*, int64_t* n);
 
 /** Peels off the current protocol to expose the underlying one
  *

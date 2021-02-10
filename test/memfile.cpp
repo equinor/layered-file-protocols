@@ -136,3 +136,23 @@ TEST_CASE_METHOD(
     "[mem]") {
     test_random_seek(this);
 }
+
+TEST_CASE_METHOD(
+    random_memfile,
+    "Tell and ptell return the same result",
+    "[mem]") {
+    const auto n = GENERATE_COPY(take(1, random(0, size - 1)));
+    auto err = lfp_seek(f, n);
+    REQUIRE(err == LFP_OK);
+
+    std::int64_t tell;
+    err = lfp_tell(f, &tell);
+    CHECK(err == LFP_OK);
+
+    std::int64_t ptell;
+    err = lfp_ptell(f, &ptell);
+    CHECK(err == LFP_OK);
+
+    CHECK(tell == n);
+    CHECK(tell == ptell);
+}

@@ -336,6 +336,66 @@ TEST_CASE_METHOD(
     CHECK_THAT(out, Equals(memout));
 }
 
+TEST_CASE_METHOD(
+    zero_12,
+    "RP66: ptell values are absolute",
+    "[rp66][ptell]") {
+
+    SECTION( "setup description: "+description ) {
+
+    const auto contents = std::vector< unsigned char > {
+        0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x20, 0x00, 0x00, 0x00,
+
+        0x00, 0x08,
+        0xFF, 0x01,
+
+        0x54, 0x41, 0x50, 0x45,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00,
+    };
+
+    auto* inner = create(contents);
+    auto* tif = lfp_tapeimage_open(inner);
+    auto* rp66 = lfp_rp66_open(tif);
+
+    SECTION( "tell on seek" ) {
+        auto err = lfp_seek(rp66, 2);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(rp66, &tell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t ptell;
+        err = lfp_ptell(rp66, &ptell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t inner_ptell;
+        err = lfp_ptell(rp66, &inner_ptell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t tif_ptell;
+        err = lfp_ptell(rp66, &tif_ptell);
+        REQUIRE(err == LFP_OK);
+
+        CHECK(tell == 2);
+        CHECK(ptell == 30);
+        CHECK(tif_ptell == 30);
+        CHECK(inner_ptell == 30);
+    }
+
+    lfp_close(rp66);
+    }
+}
+
 TEST_CASE(
     "Seek and read to record boarders",
     "[rp66]") {

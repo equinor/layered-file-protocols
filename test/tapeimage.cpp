@@ -362,6 +362,58 @@ TEST_CASE(
     lfp_close(tif);
 }
 
+TEST_CASE_METHOD(
+    zero_12,
+    "TIF: ptell values are absolute",
+    "[tapeimage][ptell]") {
+
+    SECTION( "setup description: "+description ) {
+
+    const auto contents = std::vector< unsigned char > {
+        0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x20, 0x00, 0x00, 0x00,
+
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00,
+    };
+
+    auto* inner = create(contents);
+    auto* tif = lfp_tapeimage_open(inner);
+
+    SECTION( "tell on seek" ) {
+        auto err = lfp_seek(tif, 2);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(tif, &tell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t ptell;
+        err = lfp_ptell(tif, &ptell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t inner_ptell;
+        err = lfp_ptell(tif, &inner_ptell);
+        REQUIRE(err == LFP_OK);
+
+        CHECK(tell == 2);
+        CHECK(ptell == 26);
+        CHECK(inner_ptell == 26);
+    }
+
+    lfp_close(tif);
+    }
+}
+
 TEST_CASE(
     "Seeks are performed relative to layer",
     "[tapeimage][seek]") {
@@ -1649,6 +1701,11 @@ TEST_CASE(
             } else {
                 return 0;
             }
+        }
+
+        std::int64_t ptell() const noexcept (false) {
+            // file is opened at 0, so logical and physical tells match
+            return this->tell();
         }
 
         lfp_protocol* peel() noexcept (false) override { throw; }

@@ -185,6 +185,7 @@ public:
 
     void seek(std::int64_t)   noexcept (false) override;
     std::int64_t tell() const noexcept (false) override;
+    std::int64_t ptell() const noexcept (false) override;
     lfp_protocol* peel() noexcept (false) override;
     lfp_protocol* peek() const noexcept (false) override;
 
@@ -765,6 +766,10 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 std::int64_t tapeimage::tell() const noexcept (false) {
     const auto pos = this->index.index_of(this->current);
     return this->addr.logical(this->current.tell(), pos);
+}
+
+std::int64_t tapeimage::ptell() const noexcept (false) {
+    return this->fp->ptell();
 }
 
 }

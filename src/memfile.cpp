@@ -35,6 +35,7 @@ public:
 
     void seek(std::int64_t) noexcept (false) override;
     std::int64_t tell() const noexcept (true) override;
+    std::int64_t ptell() const noexcept (true) override;
 
     lfp_protocol* peel() noexcept (false) override;
     lfp_protocol* peek() const noexcept (false) override;
@@ -84,6 +85,13 @@ void memfile::seek(std::int64_t n) noexcept (false) {
 
 std::int64_t memfile::tell() const noexcept (true) {
     return this->pos;
+}
+
+std::int64_t memfile::ptell() const noexcept (true) {
+    /* It's impossible to open memfile on anything else other than 0,
+     * so ptell will always match logical tell.
+     */
+    return this->tell();
 }
 
 lfp_protocol* memfile::peel() noexcept (false) {

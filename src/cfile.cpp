@@ -105,6 +105,7 @@ public:
 
     void seek(std::int64_t) noexcept (false) override;
     std::int64_t tell() const noexcept (false) override;
+    std::int64_t ptell() const noexcept (false) override;
 
     lfp_protocol* peel() noexcept (false) override;
     lfp_protocol* peek() const noexcept (false) override;
@@ -174,14 +175,18 @@ void cfile::seek(std::int64_t n) noexcept (false) {
         throw io_error(std::strerror(errno));
 }
 
-std::int64_t cfile::tell() const noexcept (false) {
+std::int64_t cfile::ptell() const noexcept (false) {
     if (this->zero == -1)
         throw not_supported(this->ftell_errmsg);
 
     std::int64_t off = long_tell(this->fp.get());
     if (off == -1)
         throw io_error(std::strerror(errno));
-    return off - this->zero;
+    return off;
+}
+
+std::int64_t cfile::tell() const noexcept (false) {
+    return this->ptell() - this->zero;
 }
 
 lfp_protocol* cfile::peel() noexcept (false) {

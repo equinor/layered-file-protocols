@@ -182,6 +182,7 @@ public:
 
     int eof() const noexcept (true) override;
     std::int64_t tell() const noexcept (true) override;
+    std::int64_t ptell() const noexcept (true) override;
     void seek(std::int64_t) noexcept (false) override;
     lfp_protocol* peel() noexcept (false) override;
     lfp_protocol* peek() const noexcept (false) override;
@@ -477,6 +478,10 @@ int rp66::eof() const noexcept (true) {
 std::int64_t rp66::tell() const noexcept (true) {
     const auto pos = this->index.index_of(this->current);
     return this->addr.logical(this->current.tell(), pos);
+}
+
+std::int64_t rp66::ptell() const noexcept (true) {
+    return this->fp->ptell();
 }
 
 void rp66::seek(std::int64_t n) noexcept (false) {

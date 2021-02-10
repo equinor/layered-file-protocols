@@ -64,10 +64,17 @@ public:
     virtual void seek(std::int64_t) noexcept (false);
     /** \copybrief lfp_tell
      *
-     * If this is not implemented, `lfp_seek()` will always return
+     * If this is not implemented, `lfp_tell()` will always return
      * `LFP_NOTIMPLEMENTED`.
      */
     virtual std::int64_t tell() const noexcept (false);
+
+    /** \copybrief lfp_ptell
+     *
+     * If this is not implemented, `lfp_ptell()` will always return
+     * `LFP_NOTIMPLEMENTED`.
+     */
+    virtual std::int64_t ptell() const noexcept (false);
 
     /** \copybrief lfp_peel
      *
