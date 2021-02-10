@@ -20,10 +20,10 @@ struct header {
 
     /*
      * Visible Records do not contain information about their own initial
-     * offset into the file. That makes the mapping between physical- and
+     * offset into the file. That makes the mapping between base- and
      * logical- offsets rather cumbersome. Calculating the offset of a record
      * can be quite expensive, as it's basically the sum of all previous record
-     * lengths. Thus headers are augmented to include their physical offset.
+     * lengths. Thus headers are augmented to include their base offset.
      */
     std::int64_t offset = 0;
 
@@ -36,7 +36,7 @@ struct header {
 };
 
 /**
- * Address translator between physical offsets (provided by the underlying
+ * Address translator between base offsets (provided by the underlying
  * layer) and logical offsets (presented to the user).
  */
 class address_map {
@@ -45,19 +45,19 @@ public:
     explicit address_map(std::int64_t z) : bzero(z) {}
 
     /**
-     * Get the logical address from the physical address, i.e. the one reported
+     * Get the logical address from the base address, i.e. the one reported
      * by rp66::tell(), in the bytestream with no interleaved headers.
      */
     std::int64_t logical(std::int64_t addr, int record) const noexcept (true);
     /**
-     * Get the physical address from the logical address, i.e. the address with
+     * Get the base address from the logical address, i.e. the address with
      * headers accounted for.
      *
      * Warning
      * -------
-     *  This function assumes the physical address within record.
+     *  This function assumes the base address within record.
      */
-    std::int64_t physical(std::int64_t addr, int record) const noexcept (true);
+    std::int64_t base(std::int64_t addr, int record) const noexcept (true);
 
     /**
      * Offset of protocol zero according to base level, i.e. the first possible
@@ -109,7 +109,7 @@ private:
 
 /**
  *
- * The read_head class implements part of the abstraction of a physical layer.
+ * The read_head class implements part of the abstraction of a base layer.
  * More precisely, it handles the state of the current record and the intricate
  * details of moving back and forth between Visible Records.
  *
@@ -203,7 +203,7 @@ const noexcept (true) {
 }
 
 std::int64_t
-address_map::physical(std::int64_t addr, int record)
+address_map::base(std::int64_t addr, int record)
 const noexcept (true) {
     return addr + (header::size * (1 + record)) + this->bzero;
 }
@@ -278,11 +278,11 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
      * the ordered index.
      *
      * Phase 2 is a linear search from [cur, end) that is aware of the
-     * logical/physical offset distinction. Because of the approximation, it
+     * logical/base offset distinction. Because of the approximation, it
      * should do fairly few hops.
      *
      * The main reason for the two-phase search is that an elements' index is
-     * required to compare logical addresses to physical ones, and upper_bound
+     * required to compare logical addresses to base ones, and upper_bound
      * is oblivious to the current item's position.
      */
 
@@ -487,7 +487,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
     if (this->index.contains(n)) {
         const auto next = this->index.find(n, this->current);
         const auto pos  = this->index.index_of(next);
-        const auto real_offset = this->addr.physical(n, pos);
+        const auto real_offset = this->addr.base(n, pos);
 
         this->fp->seek(real_offset);
         this->current.move(next);
@@ -502,7 +502,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
     while (true) {
         const auto last = this->index.last();
         const auto pos  = this->index.index_of(last);
-        const auto real_offset = this->addr.physical(n, pos);
+        const auto real_offset = this->addr.base(n, pos);
         const auto end = last->offset + last->length;
 
         if (real_offset < end) {
@@ -538,7 +538,7 @@ void rp66::seek(std::int64_t n) noexcept (false) {
              */
             const auto last = this->index.last();
             const auto pos  = this->index.index_of(last);
-            const auto real_offset = this->addr.physical(n, pos);
+            const auto real_offset = this->addr.base(n, pos);
             const auto skip = (std::min)(real_offset - this->current.tell(),
                                          this->current.bytes_left());
             this->current.move(skip);

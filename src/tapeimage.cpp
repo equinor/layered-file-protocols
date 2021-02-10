@@ -22,7 +22,7 @@ struct header {
 };
 
 /**
- * Address translator between physical offsets (provided by the underlying
+ * Address translator between base offsets (provided by the underlying
  * file) and logical offsets (presented to the user).
  */
 class address_map {
@@ -31,19 +31,19 @@ public:
     explicit address_map(std::int64_t z) : bzero(z) {}
 
     /**
-     * Get the logical address from the physical address, i.e. the one reported
+     * Get the logical address from the base address, i.e. the one reported
      * by tapeimage::tell(), in the bytestream with no interleaved headers.
      */
     std::int64_t logical(std::int64_t addr, int record) const noexcept (true);
     /**
-     * Get the physical address from the logical address, i.e. the address with
+     * Get the base address from the logical address, i.e. the address with
      * headers accounted for.
      *
      * Warning
      * -------
-     *  This function assumes the physical address within record.
+     *  This function assumes the base address within record.
      */
-    std::int64_t physical(std::int64_t addr, int record) const noexcept (true);
+    std::int64_t base(std::int64_t addr, int record) const noexcept (true);
 
     /**
      * Offset of protocol zero according to base level, i.e. the first possible
@@ -110,7 +110,7 @@ private:
 
 /**
  *
- * The read_head class implements parts of the abstraction of a physical file
+ * The read_head class implements parts of the abstraction of a base file
  * (tape) reader, which moves back and forth.
  *
  * It is somewhat flawed, as it is also an iterator over the record index,
@@ -210,7 +210,7 @@ const noexcept (true) {
 }
 
 std::int64_t
-address_map::physical(std::int64_t addr, int record)
+address_map::base(std::int64_t addr, int record)
 const noexcept (true) {
     return addr + (header::size * (1 + record)) + this->bzero;
 }
@@ -279,11 +279,11 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
      * the ordered index.
      *
      * Phase 2 is a linear search from [cur, end) that is aware of the
-     * logical/physical offset distinction. Because of the approximation, it
+     * logical/base offset distinction. Because of the approximation, it
      * should do fairly few hops.
      *
      * The main reason for the two-phase search is that an elements' index is
-     * required to compare logical addresses to physical ones, and upper_bound
+     * required to compare logical addresses to base ones, and upper_bound
      * is oblivious to the current item's position.
      *
      * [1] https://github.com/equinor/dlisio
@@ -523,7 +523,7 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
 
 // TODO: status instead of boolean?
 int tapeimage::eof() const noexcept (true) {
-    // TODO: consider when this says record, but physical file is EOF
+    // TODO: consider when this says record, but base file is EOF
     // TODO: end-of-file is an _empty_ record, i.e. two consecutive tape marks
     return this->fp->eof() or this->current->type == tapeimage::file;
 }
@@ -692,7 +692,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     if (this->index.contains(n)) {
         const auto next = this->index.find(n, this->current);
         const auto pos  = this->index.index_of(next);
-        const auto real_offset = this->addr.physical(n, pos);
+        const auto real_offset = this->addr.base(n, pos);
 
         this->fp->seek(real_offset);
         this->current.move(next);
@@ -709,7 +709,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     while (true) {
         const auto last = this->index.last();
         const auto pos  = this->index.index_of(last);
-        const auto real_offset = this->addr.physical(n, pos);
+        const auto real_offset = this->addr.base(n, pos);
 
         /*
          * When doing a cold seek(n), and n happens to be at the start of a
@@ -753,7 +753,7 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
              */
             const auto last = this->index.last();
             const auto pos  = this->index.index_of(last);
-            const auto real_offset = this->addr.physical(n, pos);
+            const auto real_offset = this->addr.base(n, pos);
             const auto skip = (std::min)(real_offset - this->current.tell(),
                                          this->current.bytes_left());
             this->current.move(skip);
