@@ -42,7 +42,7 @@ struct header {
 class address_map {
 public:
     address_map() = default;
-    explicit address_map(std::int64_t z) : zero(z) {}
+    explicit address_map(std::int64_t z) : bzero(z) {}
 
     /**
      * Get the logical address from the physical address, i.e. the one reported
@@ -60,13 +60,13 @@ public:
     std::int64_t physical(std::int64_t addr, int record) const noexcept (true);
 
     /**
-     * Base address of the map, i.e. the first possible address. This is
-     * usually, but not guaranteed to be, zero.
+     * Offset of protocol zero according to base level, i.e. the first possible
+     * address. This is usually, but not guaranteed to be, zero.
      */
-    std::int64_t base() const noexcept (true);
+    std::int64_t zero() const noexcept (true);
 
 private:
-    std::int64_t zero = 0;
+    std::int64_t bzero = 0;
 };
 
 /*
@@ -199,17 +199,17 @@ private:
 std::int64_t
 address_map::logical(std::int64_t addr, int record)
 const noexcept (true) {
-    return addr - (header::size * (1 + record)) - this->zero;
+    return addr - (header::size * (1 + record)) - this->bzero;
 }
 
 std::int64_t
 address_map::physical(std::int64_t addr, int record)
 const noexcept (true) {
-    return addr + (header::size * (1 + record)) + this->zero;
+    return addr + (header::size * (1 + record)) + this->bzero;
 }
 
-std::int64_t address_map::base() const noexcept (true) {
-    return this->zero;
+std::int64_t address_map::zero() const noexcept (true) {
+    return this->bzero;
 }
 
 record_index::record_index(address_map m) : addr(m) {
@@ -219,14 +219,14 @@ record_index::record_index(address_map m) : addr(m) {
      * "Insert" the ghost node right before the first actual header.
      *
      * For the ghost node to be truly invisible we need to make sure base +
-     * length == this->addr.base() as this is what the next (first actual)
-     * header uses to set it's base.
+     * length == this->addr.zero() as this is what the next (first actual)
+     * header uses to set its base.
      *
      * The values for format and major are set so that the ghost would never be
      * accepted as a real header.
      */
     ghost.length = header::size;
-    ghost.offset = this->addr.base() - ghost.length;
+    ghost.offset = this->addr.zero() - ghost.length;
     ghost.format = 0x00;
     ghost.major = 255;
     this->append(ghost);
@@ -656,11 +656,11 @@ bool rp66::read_header_from_disk() noexcept (false) {
         throw protocol_fatal( fmt::format(msg, this->index.size() + 1) );
     }
 
-    std::int64_t base = this->addr.base();
+    std::int64_t offset = this->addr.zero();
     if ( !this->index.empty() ) {
-        base = this->index.last()->offset + this->index.last()->length;
+        offset = this->index.last()->offset + this->index.last()->length;
     }
-    head.offset = base;
+    head.offset = offset;
 
     this->index.append(head);
     return true;

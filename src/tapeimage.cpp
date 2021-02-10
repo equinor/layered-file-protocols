@@ -28,7 +28,7 @@ struct header {
 class address_map {
 public:
     address_map() = default;
-    explicit address_map(std::int64_t z) : zero(z) {}
+    explicit address_map(std::int64_t z) : bzero(z) {}
 
     /**
      * Get the logical address from the physical address, i.e. the one reported
@@ -46,13 +46,13 @@ public:
     std::int64_t physical(std::int64_t addr, int record) const noexcept (true);
 
     /**
-     * Base address of the map, i.e. the first possible address. This is
-     * usually, but not guaranteed to be, zero.
+     * Offset of protocol zero according to base level, i.e. the first possible
+     * address. This is usually, but not guaranteed to be, zero.
      */
-    std::int64_t base() const noexcept (true);
+    std::int64_t zero() const noexcept (true);
 
 private:
-    std::int64_t zero = 0;
+    std::int64_t bzero = 0;
 };
 
 /*
@@ -206,24 +206,24 @@ private:
 std::int64_t
 address_map::logical(std::int64_t addr, int record)
 const noexcept (true) {
-    return addr - (header::size * (1 + record)) - this->zero;
+    return addr - (header::size * (1 + record)) - this->bzero;
 }
 
 std::int64_t
 address_map::physical(std::int64_t addr, int record)
 const noexcept (true) {
-    return addr + (header::size * (1 + record)) + this->zero;
+    return addr + (header::size * (1 + record)) + this->bzero;
 }
 
-std::int64_t address_map::base() const noexcept (true) {
-    return this->zero;
+std::int64_t address_map::zero() const noexcept (true) {
+    return this->bzero;
 }
 
 record_index::record_index(address_map m) : addr(m) {
     header ghost;
     ghost.type = -1;
-    ghost.prev = m.base();
-    ghost.next = m.base();
+    ghost.prev = m.zero();
+    ghost.next = m.zero();
     this->append(ghost);
     this->append(ghost);
 }
@@ -669,12 +669,12 @@ bool tapeimage::read_header_from_disk() noexcept (false) {
          * B.prev must be pointing to A.position. As we can open file on on
          * tape header, we know that position of A is actually our zero.
          */
-        if (head.prev != this->addr.base()) {
+        if (head.prev != this->addr.zero()) {
             const auto msg = "file corrupt: second header prev (= {}) must be "
                              "pointing to zero (= {}). Error happened in "
                              "recovery mode. File might be missing data";
             throw protocol_failed_recovery(fmt::format(
-                  msg, head.prev, this->addr.base()));
+                  msg, head.prev, this->addr.zero()));
         }
     }
 
