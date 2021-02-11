@@ -23,12 +23,16 @@ struct header {
 
 /**
  * Address translator between base offsets (provided by the underlying
- * file) and logical offsets (presented to the user).
+ * file), logical offsets (presented to the user) and physical offsets
+ * (as presented by the filehandle).
  */
 class address_map {
 public:
     address_map() = default;
-    explicit address_map(std::int64_t z) : bzero(z) {}
+    explicit address_map(std::int64_t z, std::int64_t pz):
+        bzero(z),
+        pzero(pz)
+    {}
 
     /**
      * Get the logical address from the base address, i.e. the one reported
@@ -46,13 +50,20 @@ public:
     std::int64_t base(std::int64_t addr, int record) const noexcept (true);
 
     /**
-     * Offset of protocol zero according to base level, i.e. the first possible
-     * address. This is usually, but not guaranteed to be, zero.
+     * Get the base address from the physical address, i.e. the address of
+     * tapemarks offsets accounted for base protocol zero.
      */
-    std::int64_t zero() const noexcept (true);
+    std::int64_t from_physical(std::int64_t addr) const noexcept (true);
+
+    /**
+     * Offset of protocol zero according to physical level, i.e. ptell at which
+     * protocol was opened. This is usually, but not guaranteed to be, zero.
+     */
+    std::int64_t physical_zero() const noexcept (true);
 
 private:
     std::int64_t bzero = 0;
+    std::int64_t pzero = 0;
 };
 
 /*
@@ -60,9 +71,9 @@ private:
  * (lower-address first fashion).
  *
  * Two ghost nodes are inserted first:
- *  { type: -1, prev: base-addr, next: base-addr }
+ *  { type: -1, prev: physical-zero, next: physical-zero }
  *
- *  where base address is the underlying file pointer's tell() at the time of
+ *  where physical-zero is the underlying file pointer's ptell() at the time of
  *  opening (usually zero). Very little information is stored explicitly - for
  *  example, the position of a record is not stored, and in order to determine
  *  where a record starts, the previous or next record's prev/next pointers
@@ -159,10 +170,10 @@ public:
     read_head next_record() const noexcept (true);
 
     /*
-     * The position of the read head. This should correspond to the offset
-     * reported by the underlying file.
+     * The absolute position of the read head. This should correspond to
+     * the ptell reported by the underlying file.
      */
-    std::int64_t tell() const noexcept (true);
+    std::int64_t ptell() const noexcept (true);
 
 private:
     explicit read_head(const base_type& cur) : base_type(cur) {}
@@ -216,22 +227,29 @@ const noexcept (true) {
     return addr + (header::size * (1 + record)) + this->bzero;
 }
 
-std::int64_t address_map::zero() const noexcept (true) {
-    return this->bzero;
+std::int64_t
+address_map::from_physical(std::int64_t addr)
+const noexcept (true) {
+    return addr - (this->pzero - this->bzero);
+}
+
+std::int64_t address_map::physical_zero() const noexcept (true) {
+    return this->pzero;
 }
 
 record_index::record_index(address_map m) : addr(m) {
     header ghost;
     ghost.type = -1;
-    ghost.prev = m.zero();
-    ghost.next = m.zero();
+    ghost.prev = m.physical_zero();
+    ghost.next = m.physical_zero();
     this->append(ghost);
     this->append(ghost);
 }
 
 bool record_index::contains(std::int64_t n) const noexcept (true) {
     const auto last = this->last();
-    return n < this->addr.logical(last->next, this->index_of(last));
+    return n < this->addr.logical(this->addr.from_physical(last->next),
+                                  this->index_of(last));
 }
 
 record_index::iterator
@@ -249,12 +267,14 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
     assert(n >= 0);
     const auto in_hint = [this, hint] (std::int64_t n) noexcept (true) {
         const auto pos = this->index_of(hint);
-        const auto end = this->addr.logical(hint->next, pos);
+        const auto end =
+            this->addr.logical(this->addr.from_physical(hint->next), pos);
 
         if (pos == 0)
             return n < end;
 
-        const auto begin = this->addr.logical(std::prev(hint)->next, pos - 1);
+        const auto begin = this->addr.logical(
+            this->addr.from_physical(std::prev(hint)->next), pos - 1);
 
         return n >= begin and n < end;
     };
@@ -275,7 +295,7 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
      * The algorithm actually makes two searches:
      *
      * Phase 1 is an approximating binary search that pretends the logical and
-     * phyiscal offset are the same. Since phyiscal offset >= logical offset,
+     * base offsets are the same. Since base offset >= logical offset,
      * we know that the result is always correct or before the correct one in
      * the ordered index.
      *
@@ -293,7 +313,7 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
     // phase 1
     const auto addr = this->addr;
     auto less = [addr] (std::int64_t n, const header& h) noexcept (true) {
-        return n < addr.logical(h.next, 0);
+        return n < addr.logical(addr.from_physical(h.next), 0);
     };
     const auto lower = std::upper_bound(begin, end, n, less);
 
@@ -311,7 +331,7 @@ record_index::find(std::int64_t n, iterator hint) const noexcept (false) {
      */
     auto pos = this->index_of(lower);
     auto next_larger = [addr, n, pos] (const header& rec) mutable {
-        return n < addr.logical(rec.next, pos++);
+        return n < addr.logical(addr.from_physical(rec.next), pos++);
     };
 
     const auto cur = std::find_if(lower, end, next_larger);
@@ -403,7 +423,7 @@ read_head read_head::next_record() const noexcept (true) {
     return next;
 }
 
-std::int64_t read_head::tell() const noexcept (true) {
+std::int64_t read_head::ptell() const noexcept (true) {
     assert(this->remaining >= 0);
     return (*this)->next - this->remaining;
 }
@@ -419,8 +439,19 @@ std::int64_t baseaddr(lfp_protocol* f) noexcept (false) {
     }
 }
 
+/*
+ * Get the ptell of the underlying file if available, or a default 0.
+ */
+std::int64_t physicaladdr(lfp_protocol* f) noexcept (false) {
+    try {
+        return f->ptell();
+    } catch (const lfp::error&) {
+        return 0;
+    }
+}
+
 tapeimage::tapeimage(lfp_protocol* f) :
-    addr(baseaddr(f)),
+    addr(baseaddr(f), physicaladdr(f)),
     fp(f),
     index(this->addr)
 {
@@ -494,7 +525,7 @@ std::int64_t tapeimage::readinto(void* dst, std::int64_t len) noexcept (false) {
                 this->current.move(this->index.last());
         } else {
             const auto next = this->current.next_record();
-            this->fp->seek(next.tell());
+            this->fp->seek(this->addr.from_physical(next.ptell()));
             this->current.move(next);
         }
 
@@ -535,7 +566,8 @@ bool tapeimage::read_header_from_disk() noexcept (false) {
          * This method should only be called when the underlying file pointer
          * is exactly at the start of a header
          */
-        assert(this->index.last()->next == this->fp->tell());
+        assert(this->addr.from_physical(this->index.last()->next) ==
+               this->fp->tell());
     } catch (const lfp::error&) {
         // tell can throw (for example, cloud). In that case disregard assert
     }
@@ -670,12 +702,12 @@ bool tapeimage::read_header_from_disk() noexcept (false) {
          * B.prev must be pointing to A.position. As we can open file on on
          * tape header, we know that position of A is actually our zero.
          */
-        if (head.prev != this->addr.zero()) {
+        if (head.prev != this->addr.physical_zero()) {
             const auto msg = "file corrupt: second header prev (= {}) must be "
                              "pointing to zero (= {}). Error happened in "
                              "recovery mode. File might be missing data";
             throw protocol_failed_recovery(fmt::format(
-                  msg, head.prev, this->addr.zero()));
+                  msg, head.prev, this->addr.physical_zero()));
         }
     }
 
@@ -693,12 +725,14 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     if (this->index.contains(n)) {
         const auto next = this->index.find(n, this->current);
         const auto pos  = this->index.index_of(next);
-        const auto real_offset = this->addr.base(n, pos);
+        const auto base_offset = this->addr.base(n, pos);
 
-        this->fp->seek(real_offset);
+        this->fp->seek(base_offset);
         this->current.move(next);
-        assert(real_offset >= this->current.tell());
-        this->current.move(real_offset - this->current.tell());
+        const auto current_tell =
+            this->addr.from_physical(this->current.ptell());
+        assert(base_offset >= current_tell);
+        this->current.move(base_offset - current_tell);
         return;
     }
 
@@ -710,7 +744,8 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
     while (true) {
         const auto last = this->index.last();
         const auto pos  = this->index.index_of(last);
-        const auto real_offset = this->addr.base(n, pos);
+        const auto base_offset = this->addr.base(n, pos);
+        const auto last_indexed = this->addr.from_physical(last->next);
 
         /*
          * When doing a cold seek(n), and n happens to be at the start of a
@@ -720,19 +755,21 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
          * would fail anyway, but it might be that this address is seek()'d to,
          * and a following readinto() never happens.
          */
-        if (real_offset == last->next) {
-            this->fp->seek(last->next);
+        if (base_offset == last_indexed) {
+            this->fp->seek(last_indexed);
             this->current.skip();
             break;
         }
 
-        if (real_offset < last->next) {
-            this->fp->seek(real_offset);
-            this->current.move(real_offset - this->current.tell());
+        if (base_offset < last_indexed) {
+            this->fp->seek(base_offset);
+            const auto current_offset =
+                this->addr.from_physical(this->current.ptell());
+            this->current.move(base_offset - current_offset);
             break;
         }
 
-        this->fp->seek(last->next);
+        this->fp->seek(last_indexed);
         // skips the whole record even if file is truncated
         this->current.skip();
         auto updated = this->read_header_from_disk();
@@ -754,8 +791,10 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
              */
             const auto last = this->index.last();
             const auto pos  = this->index.index_of(last);
-            const auto real_offset = this->addr.base(n, pos);
-            const auto skip = (std::min)(real_offset - this->current.tell(),
+            const auto base_offset = this->addr.base(n, pos);
+            const auto current_offset =
+                this->addr.from_physical(this->current.ptell());
+            const auto skip = (std::min)(base_offset - current_offset,
                                          this->current.bytes_left());
             this->current.move(skip);
             return;
@@ -765,7 +804,8 @@ void tapeimage::seek(std::int64_t n) noexcept (false) {
 
 std::int64_t tapeimage::tell() const noexcept (false) {
     const auto pos = this->index.index_of(this->current);
-    return this->addr.logical(this->current.tell(), pos);
+    const auto base_tell = this->addr.from_physical(this->current.ptell());
+    return this->addr.logical(base_tell, pos);
 }
 
 std::int64_t tapeimage::ptell() const noexcept (false) {
