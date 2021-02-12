@@ -83,9 +83,8 @@ lfp_protocol* create_cfile_handle_with_0 (std::vector< unsigned char > contents,
     std::FILE* fp = std::tmpfile();
     std::fwrite(contents.data(), 1, contents.size(), fp);
     std::rewind(fp);
-    fseek(fp, zero, SEEK_SET);
 
-    return lfp_cfile(fp);
+    return lfp_cfile_open_at_offset(fp, zero);
 }
 
 lfp_protocol* create_cfile_handle (std::vector< unsigned char > contents) {

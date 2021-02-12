@@ -26,11 +26,11 @@ struct random_cfile : random_memfile {
 
         if (z == -1) {
             z = GENERATE_COPY(take(1, random(0, size - 1)));
+            f = lfp_cfile_open_at_offset(fp, z);
+        } else {
+            f = lfp_cfile(fp);
         }
         zero = z;
-
-        std::fseek(fp, zero, SEEK_SET);
-        f = lfp_cfile(fp);
         REQUIRE(f);
     }
 

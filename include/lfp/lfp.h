@@ -304,7 +304,7 @@ const char* lfp_errormsg(lfp_protocol*);
  *
  * This protocol provides an lfp interface to `FILE`.
  *
- * The protocol will immediately `ftell()` and consider this as the the start
+ * The protocol will immediately `ftell()` and consider this as the start
  * of the file by lfp. This allows reading past particular garbage, noise, or
  * sensitive details before giving control to lfp.
  *
@@ -317,6 +317,26 @@ const char* lfp_errormsg(lfp_protocol*);
  */
 LFP_API
 lfp_protocol* lfp_cfile(FILE*);
+
+/** C FILE protocol
+ *
+ * This protocol provides an lfp interface to `FILE`.
+ *
+ * The protocol will `fseek()` to provided zero and consider this as the start
+ * of the file by lfp. This allows reading past particular garbage, noise, or
+ * sensitive details before giving control to lfp.
+ *
+ * The cfile protocol supports everything the specific `FILE` instance support,
+ * which means features may degrade when `FILE` is a stream (pipe) or similar.
+ * Typically, this means seek and tell will fail.
+ *
+ * This function takes *ownership* of the handle, and the `FILE` will be
+ * `fclose()`d when `lfp_close()` is called on it.
+ *
+ * \param zero Absolute offset to be considered as zero
+ */
+LFP_API
+lfp_protocol* lfp_cfile_open_at_offset(FILE*, int64_t zero);
 
 #if (__cplusplus)
 } // extern "C"
