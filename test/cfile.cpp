@@ -14,7 +14,7 @@ using namespace Catch::Matchers;
 namespace {
 
 struct random_cfile : random_memfile {
-    random_cfile() {
+    random_cfile(int z) {
         REQUIRE(not expected.empty());
 
         std::FILE* fp = std::tmpfile();
@@ -24,9 +24,22 @@ struct random_cfile : random_memfile {
         lfp_close(f);
         f = nullptr;
 
-        f = lfp_cfile(fp);
+        if (z == -1) {
+            z = GENERATE_COPY(take(1, random(0, size - 1)));
+            f = lfp_cfile_open_at_offset(fp, z);
+        } else {
+            f = lfp_cfile(fp);
+        }
+        zero = z;
         REQUIRE(f);
     }
+
+    random_cfile() : random_cfile(0) { }
+    int zero;
+};
+
+struct random_cfile_with_random_zero : random_cfile {
+    random_cfile_with_random_zero() : random_cfile(-1) { }
 };
 
 }
@@ -244,6 +257,42 @@ TEST_CASE_METHOD(
     }
 }
 
+TEST_CASE_METHOD(
+    random_cfile_with_random_zero,
+    "ptell and tell are reported correctly regardless of zero",
+    "[cfile]") {
+
+    SECTION( "tell on 0" ) {
+        std::int64_t tell;
+        auto err = lfp_tell(f, &tell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t ptell;
+        err = lfp_ptell(f, &ptell);
+        REQUIRE(err == LFP_OK);
+
+        CHECK(tell  == 0);
+        CHECK(ptell == zero);
+    }
+
+    SECTION( "tell on seek" ) {
+        const auto n = GENERATE_COPY(take(1, random(0, size - 1 - zero)));
+        auto err = lfp_seek(f, n);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(f, &tell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t ptell;
+        err = lfp_ptell(f, &ptell);
+        REQUIRE(err == LFP_OK);
+
+        CHECK(tell  == n);
+        CHECK(ptell == tell + zero);
+    }
+}
+
 
 TEST_CASE_METHOD(
     random_cfile,
@@ -269,6 +318,17 @@ TEST_CASE_METHOD(
     SECTION( "eof not reported on seek to end" ) {
         const auto err = lfp_seek(f, out.size());
 
+        CHECK(err == LFP_OK);
+        CHECK(!lfp_eof(f));
+    }
+
+    SECTION( "eof not repored on seek to start after read past-end" ) {
+        std::int64_t nread = -1;
+        auto err = lfp_readinto(f, out.data(), out.size() +1, &nread);
+        REQUIRE(err == LFP_EOF);
+        REQUIRE(lfp_eof(f));
+
+        err = lfp_seek(f, 0);
         CHECK(err == LFP_OK);
         CHECK(!lfp_eof(f));
     }

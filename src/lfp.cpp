@@ -84,6 +84,23 @@ int lfp_tell(lfp_protocol* f, std::int64_t* n) try {
     return LFP_UNHANDLED_EXCEPTION;
 }
 
+int lfp_ptell(lfp_protocol* f, std::int64_t* n) try {
+    assert(n);
+    assert(f);
+    *n = f->ptell();
+    return LFP_OK;
+} catch (const lfp::error& e) {
+    f->errmsg(e.what());
+    return e.status();
+} catch (const std::exception& e) {
+    f->errmsg(e.what());
+    return LFP_UNHANDLED_EXCEPTION;
+} catch (...) {
+    assert(false);
+    f->errmsg("Unhandled error that does not derive from std::exception");
+    return LFP_UNHANDLED_EXCEPTION;
+}
+
 int lfp_peel(lfp_protocol* outer, lfp_protocol** inner) try {
     assert(outer);
     assert(inner);
@@ -136,6 +153,10 @@ void lfp_protocol::seek(std::int64_t) noexcept (false) {
 
 std::int64_t lfp_protocol::tell() const noexcept (false) {
     throw lfp::not_implemented("tell: not implemented for layer");
+}
+
+std::int64_t lfp_protocol::ptell() const noexcept (false) {
+    throw lfp::not_implemented("ptell: not implemented for layer");
 }
 
 const char* lfp_protocol::errmsg() noexcept (true) {

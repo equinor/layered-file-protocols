@@ -362,6 +362,58 @@ TEST_CASE(
     lfp_close(tif);
 }
 
+TEST_CASE_METHOD(
+    zero_12,
+    "TIF: ptell values are absolute",
+    "[tapeimage][ptell]") {
+
+    SECTION( "setup description: "+description ) {
+
+    const auto contents = std::vector< unsigned char > {
+        0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x20, 0x00, 0x00, 0x00,
+
+        0x54, 0x41, 0x50, 0x45,
+        0x4D, 0x41, 0x52, 0x4B,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00,
+    };
+
+    auto* inner = create(contents);
+    auto* tif = lfp_tapeimage_open(inner);
+
+    SECTION( "tell on seek" ) {
+        auto err = lfp_seek(tif, 2);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(tif, &tell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t ptell;
+        err = lfp_ptell(tif, &ptell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t inner_ptell;
+        err = lfp_ptell(tif, &inner_ptell);
+        REQUIRE(err == LFP_OK);
+
+        CHECK(tell == 2);
+        CHECK(ptell == 26);
+        CHECK(inner_ptell == 26);
+    }
+
+    lfp_close(tif);
+    }
+}
+
 TEST_CASE(
     "Seeks are performed relative to layer",
     "[tapeimage][seek]") {
@@ -503,6 +555,18 @@ TEST_CASE(
         std::int64_t tell;
         lfp_tell(tif, &tell);
         CHECK(tell == 8);
+    }
+
+    SECTION( "Seek to start after read past eof" ) {
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 10, &bytes_read);
+        REQUIRE(err == LFP_EOF);
+        REQUIRE(lfp_eof(tif));
+
+        err = lfp_seek(tif, 0);
+        CHECK(err == LFP_OK);
+        CHECK(!lfp_eof(tif));
     }
 
     SECTION( "Read past eof - after a seek past eof" ) {
@@ -1052,9 +1116,12 @@ TEST_CASE_METHOD(
 
 }
 
-TEST_CASE(
-    "Tapeimage can be opened at any TM"
+TEST_CASE_METHOD(
+    zero_12,
+    "Tapeimage can be opened at any TM",
     "[tapeimage][offset]") {
+
+    SECTION( "setup description: "+description ) {
 
     const auto file = std::vector< unsigned char > {
         0x00, 0x00, 0x00, 0x00,
@@ -1086,12 +1153,8 @@ TEST_CASE(
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
     };
 
-    auto* mem = lfp_memfile_openwith(file.data(), file.size());
-
-    auto err = lfp_seek(mem, 12);
-    CHECK(err == LFP_OK);
-
-    auto* tif = lfp_tapeimage_open(mem);
+    auto* inner = create(file);
+    auto* tif = lfp_tapeimage_open(inner);
 
     SECTION( "Tell starts at 0" ) {
         std::int64_t tell;
@@ -1101,17 +1164,29 @@ TEST_CASE(
     SECTION( "Seek past index" ) {
         test_seek_and_read(tif, 6, LFP_OK);
     }
+    SECTION( "Seek past data" ) {
+        test_seek_and_read(tif, 10, LFP_EOF);
+    }
     SECTION( "Seek with index" ) {
         auto out = std::vector< unsigned char >(8, 0xFF);
         std::int64_t bytes_read = -1;
-        err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+        auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
         CHECK(err == LFP_OK);
 
+        test_seek_and_read(tif, 6, LFP_OK);
         test_seek_and_read(tif, 2, LFP_OK);
+    }
+    SECTION( "Seek to index border" ) {
+        auto out = std::vector< unsigned char >(4, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(tif, out.data(), 4, &bytes_read);
+        CHECK(err == LFP_OK);
+
+        test_seek_and_read(tif, 4, LFP_OK);
     }
     SECTION( "Read from already indexed records" ) {
         /* won't matter when read is the only indexing operation*/
-        err = lfp_seek(tif, 6);
+        auto err = lfp_seek(tif, 6);
         CHECK(err == LFP_OK);
         err = lfp_seek(tif, 0);
         CHECK(err == LFP_OK);
@@ -1127,13 +1202,14 @@ TEST_CASE(
     SECTION( "Read past index" ) {
         auto out = std::vector< unsigned char >(8, 0xFF);
         std::int64_t bytes_read = -1;
-        err = lfp_readinto(tif, out.data(), 8, &bytes_read);
+        auto err = lfp_readinto(tif, out.data(), 8, &bytes_read);
 
         CHECK(bytes_read == 8);
         CHECK(err == LFP_OK);
         CHECK_THAT(out, Equals(expected));
     }
     lfp_close(tif);
+    }
 }
 
 TEST_CASE(
@@ -1284,6 +1360,8 @@ TEST_CASE(
         const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
 
         CHECK(err == LFP_PROTOCOL_TRYRECOVERY);
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("unknown head.type. Assigning 'record' type"));
         CHECK(bytes_read == 16);
 
         const auto expected = std::vector< unsigned char > {
@@ -1637,6 +1715,11 @@ TEST_CASE(
             } else {
                 return 0;
             }
+        }
+
+        std::int64_t ptell() const noexcept (false) {
+            // file is opened at 0, so logical and physical tells match
+            return this->tell();
         }
 
         lfp_protocol* peel() noexcept (false) override { throw; }

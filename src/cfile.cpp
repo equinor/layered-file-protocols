@@ -88,11 +88,13 @@ int long_seek(std::FILE* fp, std::int64_t pos) {
  */
 class cfile : public lfp_protocol {
 public:
-    cfile(std::FILE* f) :
+    cfile(std::FILE* f, std::int64_t z) :
         fp(f),
-        zero(long_tell(f)),
+        zero(z),
         ftell_errmsg(zero != -1 ? "" : std::strerror(errno))
-    {}
+    {
+        long_seek(f, zero);
+    }
 
     void close() noexcept (false) override;
     lfp_status readinto(
@@ -105,6 +107,7 @@ public:
 
     void seek(std::int64_t) noexcept (false) override;
     std::int64_t tell() const noexcept (false) override;
+    std::int64_t ptell() const noexcept (false) override;
 
     lfp_protocol* peel() noexcept (false) override;
     lfp_protocol* peek() const noexcept (false) override;
@@ -174,14 +177,18 @@ void cfile::seek(std::int64_t n) noexcept (false) {
         throw io_error(std::strerror(errno));
 }
 
-std::int64_t cfile::tell() const noexcept (false) {
+std::int64_t cfile::ptell() const noexcept (false) {
     if (this->zero == -1)
         throw not_supported(this->ftell_errmsg);
 
     std::int64_t off = long_tell(this->fp.get());
     if (off == -1)
         throw io_error(std::strerror(errno));
-    return off - this->zero;
+    return off;
+}
+
+std::int64_t cfile::tell() const noexcept (false) {
+    return this->ptell() - this->zero;
 }
 
 lfp_protocol* cfile::peel() noexcept (false) {
@@ -198,8 +205,13 @@ lfp_protocol* cfile::peek() const noexcept (false) {
 
 lfp_protocol* lfp_cfile(std::FILE* fp) {
     if (!fp) return nullptr;
+    return lfp_cfile_open_at_offset(fp, lfp::long_tell(fp));
+}
+
+lfp_protocol* lfp_cfile_open_at_offset(std::FILE* fp, std::int64_t zero) {
+    if (!fp) return nullptr;
     try {
-        return new lfp::cfile(fp);
+        return new lfp::cfile(fp, zero);
     } catch (...) {
         return nullptr;
     }

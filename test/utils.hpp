@@ -78,12 +78,17 @@ struct random_memfile {
 }
 
 namespace {
-lfp_protocol* create_cfile_handle (std::vector< unsigned char > contents) {
+lfp_protocol* create_cfile_handle_with_0 (std::vector< unsigned char > contents,
+                                          std::int64_t zero) {
     std::FILE* fp = std::tmpfile();
     std::fwrite(contents.data(), 1, contents.size(), fp);
     std::rewind(fp);
 
-    return lfp_cfile(fp);
+    return lfp_cfile_open_at_offset(fp, zero);
+}
+
+lfp_protocol* create_cfile_handle (std::vector< unsigned char > contents) {
+    return create_cfile_handle_with_0(contents, 0);
 }
 
 lfp_protocol* create_memfile_handle (std::vector< unsigned char > contents) {
@@ -123,6 +128,78 @@ struct device {
      */
     std::string device_type;
 };
+
+
+struct zero_12 {
+    /* fixture for testing possible options for opening files with non-zero
+     * starting point. Fixture is useful because code that uses it should
+     * always work the same, no matter the setup.
+     *
+     * Currently handle will be returned with *12* bytes seeked inside data.
+     * Value is fixed as it is enough for current tests.
+     */
+    zero_12() {
+        /*
+         * Using number-generator and switch seems like the best option to
+         * generate various setup scenarious in catch.
+         */
+        auto i = GENERATE(1, 2, 3, 4);
+
+        switch (i) {
+            case 1 : {
+                auto setup = [] (std::vector< unsigned char > contents) {
+                    auto* inner = create_cfile_handle(contents);
+                    auto err = lfp_seek(inner, 12);
+                    CHECK(err == LFP_OK);
+                    return inner;
+                };
+
+                create = setup;
+                description = "cfile opened at 0, seeked to 12";
+                break;
+            }
+            case 2 : {
+                auto setup = [] (std::vector< unsigned char > contents) {
+                    auto* inner = create_memfile_handle(contents);
+                    auto err = lfp_seek(inner, 12);
+                    CHECK(err == LFP_OK);
+                    return inner;
+                };
+
+                create = setup;
+                description = "memfile opened at 0, seeked to 12";
+                break;
+            }
+            case 3 : {
+                auto setup = [] (std::vector< unsigned char > contents) {
+                    return create_cfile_handle_with_0(contents, 12);
+                };
+                create = setup;
+                description = "cfile opened at 12, not seeked";
+                break;
+            }
+            case 4 : {
+                auto setup = [] (std::vector< unsigned char > contents) {
+                    auto* inner = create_cfile_handle_with_0(contents, 6);
+                    auto err = lfp_seek(inner, 6);
+                    CHECK(err == LFP_OK);
+                    return inner;
+                };
+                create = setup;
+                description = "cfile opened at 6, seeked to 6 more";
+                break;
+            }
+
+        }
+    }
+
+    std::function <lfp_protocol* (std::vector< unsigned char >)> create;
+    /* inclusion of description information in section string makes it easy
+     * to identify what setup failed
+     */
+    std::string description;
+};
+
 
 }
 

@@ -336,6 +336,66 @@ TEST_CASE_METHOD(
     CHECK_THAT(out, Equals(memout));
 }
 
+TEST_CASE_METHOD(
+    zero_12,
+    "RP66: ptell values are absolute",
+    "[rp66][ptell]") {
+
+    SECTION( "setup description: "+description ) {
+
+    const auto contents = std::vector< unsigned char > {
+        0x01, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x20, 0x00, 0x00, 0x00,
+
+        0x00, 0x08,
+        0xFF, 0x01,
+
+        0x54, 0x41, 0x50, 0x45,
+
+        0x01, 0x00, 0x00, 0x00,
+        0x0C, 0x00, 0x00, 0x00,
+        0x2C, 0x00, 0x00, 0x00,
+    };
+
+    auto* inner = create(contents);
+    auto* tif = lfp_tapeimage_open(inner);
+    auto* rp66 = lfp_rp66_open(tif);
+
+    SECTION( "tell on seek" ) {
+        auto err = lfp_seek(rp66, 2);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t tell;
+        err = lfp_tell(rp66, &tell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t ptell;
+        err = lfp_ptell(rp66, &ptell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t inner_ptell;
+        err = lfp_ptell(rp66, &inner_ptell);
+        REQUIRE(err == LFP_OK);
+
+        std::int64_t tif_ptell;
+        err = lfp_ptell(rp66, &tif_ptell);
+        REQUIRE(err == LFP_OK);
+
+        CHECK(tell == 2);
+        CHECK(ptell == 30);
+        CHECK(tif_ptell == 30);
+        CHECK(inner_ptell == 30);
+    }
+
+    lfp_close(rp66);
+    }
+}
+
 TEST_CASE(
     "Seek and read to record boarders",
     "[rp66]") {
@@ -432,37 +492,21 @@ TEST_CASE(
     lfp_close(rp66);
 }
 
-TEST_CASE(
-    "Read sul before opening rp66",
-    "[rp66][tif][open]") {
-    const auto file = std::vector< unsigned char > {
-        /* tapemark */
-        0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x22, 0x00, 0x00, 0x00,
+enum rp66_setup { WITH_TIF, WITHOUT_TIF };
+TEST_CASE_METHOD(
+    zero_12,
+    "RP66 can be opened at any VR",
+    "[rp66][open]") {
 
-        /* Some dummy bytes to emulate the precense of a SUL */
-        0x10, 0x11, 0x12, 0x13,
+    /* Expanding setup to include TIF variation as it also shouldn't affect
+     * expected output.
+     */
+    rp66_setup s = GENERATE(rp66_setup::WITH_TIF, rp66_setup::WITHOUT_TIF);
 
-        /* First Visible Envelope */
-        0x00, 0x0C,
-        0xFF, 0x01,
-        /* Body */
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-        /* Second Visible Envelope */
-        0x00, 0x06,
-        0xFF, 0x01,
-        /* Body */
-        0x09, 0x0A,
-        /* tapemark */
-        0x01, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00,
-        0x2F, 0x00, 0x00, 0x00,
+    auto file = std::vector< unsigned char > {};
+    lfp_protocol* inner = nullptr;
+    auto desc = description;
 
-        0x01, 0x00, 0x00, 0x00,
-        0x22, 0x00, 0x00, 0x00,
-        0x3A, 0x00, 0x00, 0x00,
-    };
     const auto expected_sul = std::vector< unsigned char > {
         0x10, 0x11, 0x12, 0x13,
     };
@@ -470,11 +514,80 @@ TEST_CASE(
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A,
     };
 
-    auto* mem = lfp_memfile_openwith(file.data(), file.size());
-    CHECK(mem != nullptr);
+    switch (s) {
+        case WITH_TIF : {
+            desc += ", with TIF";
+            file = std::vector< unsigned char > {
+                /* tapemark */
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x0C, 0x00, 0x00, 0x00,
 
-    auto* tif = lfp_tapeimage_open(mem);
-    CHECK(tif != nullptr);
+                0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+                0x2E, 0x00, 0x00, 0x00,
+
+                /* Some dummy bytes to emulate the precense of a SUL */
+                0x10, 0x11, 0x12, 0x13,
+
+                /* First Visible Envelope */
+                0x00, 0x0C,
+                0xFF, 0x01,
+                /* Body */
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                /* Second Visible Envelope */
+                0x00, 0x06,
+                0xFF, 0x01,
+                /* Body */
+                0x09, 0x0A,
+                /* tapemark */
+                0x01, 0x00, 0x00, 0x00,
+                0x0C, 0x00, 0x00, 0x00,
+                0x3A, 0x00, 0x00, 0x00,
+
+                0x01, 0x00, 0x00, 0x00,
+                0x2E, 0x00, 0x00, 0x00,
+                0x46, 0x00, 0x00, 0x00,
+            };
+
+            inner = lfp_tapeimage_open(create(file));
+            break;
+
+        }
+        case WITHOUT_TIF : {
+            desc += ", no TIF";
+            file = std::vector< unsigned char > {
+                /* random bytes */
+                0xAA, 0x00, 0x00, 0x00,
+                0xAA, 0x00, 0x00, 0x00,
+                0xAA, 0x00, 0x00, 0x00,
+
+                /* Some dummy bytes to emulate the precense of a SUL */
+                0x10, 0x11, 0x12, 0x13,
+
+                /* First Visible Envelope */
+                0x00, 0x0C,
+                0xFF, 0x01,
+                /* Body */
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                /* Second Visible Envelope */
+                0x00, 0x06,
+                0xFF, 0x01,
+                /* Body */
+                0x09, 0x0A,
+
+                /* Never to be indexed, here for memfile EOF compliance */
+                0x00, 0x06,
+                0xFF, 0x01,
+                /* Body */
+                0xAA, 0xAA,
+            };
+            inner = create(file);
+            break;
+        }
+    }
+
+    SECTION( "setup description: "+desc ) {
 
     /*
      * Before opening the rp66 protocol, read the "SUL" with the current
@@ -483,13 +596,13 @@ TEST_CASE(
      */
     auto sul = std::vector< unsigned char >(4, 0xFF);
     std::int64_t bytes_read = -1;
-    auto err = lfp_readinto(tif, sul.data(), 4, &bytes_read);
+    auto err = lfp_readinto(inner, sul.data(), 4, &bytes_read);
 
     CHECK(bytes_read == 4);
     CHECK(err == LFP_OK);
     CHECK_THAT(sul, Equals(expected_sul));
 
-    auto* rp66 = lfp_rp66_open(tif);
+    auto* rp66 = lfp_rp66_open(inner);
     CHECK(rp66 != nullptr);
 
     SECTION( "Tell starts at 0" ) {
@@ -498,13 +611,13 @@ TEST_CASE(
         CHECK(tell == 0);
 
         char buf;
-        err = lfp_readinto(rp66, &buf, 1, nullptr);
+        auto err = lfp_readinto(rp66, &buf, 1, nullptr);
         CHECK(err == LFP_OK);
         CHECK(buf == 0x01);
     }
 
     SECTION( "Seek past index" ) {
-        err = lfp_seek(rp66, 9);
+        auto err = lfp_seek(rp66, 9);
         CHECK(err == 0);
 
         std::int64_t tell;
@@ -518,6 +631,11 @@ TEST_CASE(
     }
 
     SECTION( "Seek with index" ) {
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        auto err = lfp_readinto(rp66, out.data(), 8, &bytes_read);
+        REQUIRE(bytes_read == 8);
+        REQUIRE(err == LFP_OK);
+
         err = lfp_seek(rp66, 2);
         CHECK(err == 0);
 
@@ -531,9 +649,28 @@ TEST_CASE(
         CHECK(buf == 0x03);
     }
 
+    SECTION( "Seek to index border" ) {
+        auto out = std::vector< unsigned char >(8, 0xFF);
+        auto err = lfp_readinto(rp66, out.data(), 8, &bytes_read);
+        REQUIRE(bytes_read == 8);
+        REQUIRE(err == LFP_OK);
+
+        err = lfp_seek(rp66, 8);
+        CHECK(err == 0);
+
+        std::int64_t tell;
+        lfp_tell(rp66, &tell);
+        CHECK(tell == 8);
+
+        char buf;
+        err = lfp_readinto(rp66, &buf, 1, nullptr);
+        CHECK(err == LFP_OK);
+        CHECK(buf == 0x09);
+    }
+
     SECTION( "Read past index" ) {
         auto out = std::vector< unsigned char >(10, 0xFF);
-        err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+        auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
 
         CHECK(bytes_read == 10);
         CHECK(err == LFP_OK);
@@ -541,7 +678,7 @@ TEST_CASE(
     }
 
     SECTION( "Read indexed records" ) {
-        err = lfp_seek(rp66, 10);
+        auto err = lfp_seek(rp66, 10);
         CHECK(err == 0);
 
         err = lfp_seek(rp66, 0);
@@ -556,6 +693,7 @@ TEST_CASE(
     }
 
     lfp_close(rp66);
+    }
 }
 
 TEST_CASE(
@@ -597,6 +735,18 @@ TEST_CASE(
         std::int64_t tell;
         lfp_tell(rp66, &tell);
         CHECK(tell == 8);
+    }
+
+    SECTION( "Seek to start after read past eof" ) {
+        auto out = std::vector< unsigned char >(10, 0xFF);
+        std::int64_t bytes_read = -1;
+        auto err = lfp_readinto(rp66, out.data(), 10, &bytes_read);
+        REQUIRE(err == LFP_EOF);
+        REQUIRE(lfp_eof(rp66));
+
+        err = lfp_seek(rp66, 0);
+        CHECK(err == LFP_OK);
+        CHECK(!lfp_eof(rp66));
     }
 
     SECTION( "Read past eof - after a seek past eof" ) {
