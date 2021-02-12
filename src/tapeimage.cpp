@@ -641,6 +641,8 @@ bool tapeimage::read_header_from_disk() noexcept (false) {
             throw protocol_failed_recovery(msg);
         }
         this->recovery = LFP_PROTOCOL_TRYRECOVERY;
+        this->errmsg("tapeimage: unknown head.type. Assigning 'record' type to "
+                     "current header");
         head.type = tapeimage::record;
     }
 
@@ -682,15 +684,18 @@ bool tapeimage::read_header_from_disk() noexcept (false) {
          */
         const auto& back2 = *std::prev(this->index.last());
         if (head.prev != back2.next) {
+            const auto msg = "file corrupt: head.prev (= {}) != "
+                             "prev(prev(head)).next (= {}). {}";
             if (this->recovery) {
-                const auto msg = "file corrupt: head.prev (= {}) != "
-                                 "prev(prev(head)).next (= {}). "
-                                 "Error happened in recovery mode. "
-                                 "File might be missing data";
                 throw protocol_failed_recovery(
-                      fmt::format(msg, head.prev, back2.next));
+                    fmt::format(msg, head.prev, back2.next,
+                                "Error happened in recovery mode. File might "
+                                "be missing data"));
             }
             this->recovery = LFP_PROTOCOL_TRYRECOVERY;
+            this->errmsg(
+                fmt::format(msg, head.prev, back2.next,
+                            "Assigning expected .next value to .prev"));
             head.prev = back2.next;
         }
     } else if (this->recovery and not this->index.empty()) {

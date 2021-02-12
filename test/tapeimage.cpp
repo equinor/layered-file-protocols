@@ -1360,6 +1360,8 @@ TEST_CASE(
         const auto err = lfp_readinto(tif, out.data(), 16, &bytes_read);
 
         CHECK(err == LFP_PROTOCOL_TRYRECOVERY);
+        auto msg = std::string(lfp_errormsg(tif));
+        CHECK_THAT(msg, Contains("unknown head.type. Assigning 'record' type"));
         CHECK(bytes_read == 16);
 
         const auto expected = std::vector< unsigned char > {
