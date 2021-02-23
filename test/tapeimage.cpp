@@ -1494,8 +1494,8 @@ TEST_CASE(
         0x44, 0x41, 0x54, 0x41,
     };
 
-    auto run = [&](std::vector< unsigned char > contents, int expected_error)
-    {
+    auto run = [&](std::vector<unsigned char> contents, int expected_error,
+                   std::string error_message) {
         auto* mem = lfp_memfile_openwith(contents.data(), contents.size());
         auto* tif = lfp_tapeimage_open(mem);
 
@@ -1506,7 +1506,7 @@ TEST_CASE(
 
             CHECK(err == expected_error);
             auto msg = std::string(lfp_errormsg(tif));
-            CHECK_THAT(msg, Contains("missing data"));
+            CHECK_THAT(msg, Contains(error_message));
 
             CHECK(bytes_read == 12);
             auto read = std::vector< unsigned char >(out.begin(),
@@ -1551,7 +1551,7 @@ TEST_CASE(
         };
 
         auto expected_error = LFP_PROTOCOL_FAILEDRECOVERY;
-        run(contents, expected_error);
+        run(contents, expected_error, "missing data");
     }
 
     SECTION( "failed checks: header type and previous (> 2nd header)" ) {
@@ -1579,7 +1579,7 @@ TEST_CASE(
         };
 
         auto expected_error = LFP_PROTOCOL_FAILEDRECOVERY;
-        run(contents, expected_error);
+        run(contents, expected_error, "missing data");
     }
 
     SECTION( "failed checks: header type and next > prev" ) {
@@ -1603,7 +1603,32 @@ TEST_CASE(
         };
 
         auto expected_error = LFP_PROTOCOL_FATAL_ERROR;
-        run(contents, expected_error);
+        run(contents, expected_error, "missing data");
+    }
+
+    SECTION( "failed checks: next == prev == 0" ) {
+        auto contents = std::vector< unsigned char > {
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x18, 0x00, 0x00, 0x00,
+
+            0x54, 0x41, 0x50, 0x45,
+            0x4D, 0x41, 0x52, 0x4B,
+            0x44, 0x41, 0x54, 0x41,
+
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x24, 0x00, 0x00, 0x00,
+
+            // padding
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00,
+        };
+
+        auto expected_error = LFP_PROTOCOL_FATAL_ERROR;
+        run(contents, expected_error, "File might be padded");
     }
 }
 

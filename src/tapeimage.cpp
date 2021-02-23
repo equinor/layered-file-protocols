@@ -664,9 +664,18 @@ bool tapeimage::read_header_from_disk() noexcept (false) {
                              "File might be missing data";
             throw protocol_fatal(fmt::format(msg, head.next, head.prev));
         } else {
-            const auto msg = "file corrupt: head.next (= {}) <= head.prev "
-                             "(= {}). File size might be > 4GB";
-            throw protocol_fatal(fmt::format(msg, head.next, head.prev));
+            if (head.type == tapeimage::record and
+                head.next == 0 and
+                head.prev == 0) {
+                const auto msg =
+                    "file corrupt: head.type == head.next == head.prev == 0. "
+                    "File might be padded.";
+                throw protocol_fatal(fmt::format(msg, head.next, head.prev));
+            } else {
+                const auto msg = "file corrupt: head.next (= {}) <= head.prev "
+                                 "(= {}). File size might be > 4GB";
+                throw protocol_fatal(fmt::format(msg, head.next, head.prev));
+            }
         }
     }
 
