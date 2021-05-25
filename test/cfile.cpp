@@ -425,4 +425,38 @@ TEST_CASE(
         err = lfp_close(cfile);
         CHECK(err == LFP_OK);
     }
+
+    SECTION( "open file after 2GB mark using cfile zero" ) {
+        auto zero = begin + slen - 8;
+        auto* cfile = lfp_cfile_open_at_offset(fp, zero);
+
+        std::int64_t tell;
+        auto err = lfp_tell(cfile, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 0);
+
+        std::int64_t ptell;
+        err = lfp_ptell(cfile, &ptell);
+        CHECK(err == LFP_OK);
+        CHECK(ptell == zero);
+
+        err = lfp_seek(cfile, 4);
+        CHECK(err == LFP_OK);
+
+        std::int64_t bytes_read = -1;
+        auto out = std::vector< unsigned char >(4, 0xFF);
+        err = lfp_readinto(cfile, out.data(), 4, &bytes_read);
+
+        CHECK(bytes_read == 4);
+        CHECK(err == LFP_OK);
+        CHECK_THAT(out, Equals(expected));
+
+        err = lfp_tell(cfile, &tell);
+        CHECK(err == LFP_OK);
+        CHECK(tell == 8);
+
+        //should delete the file
+        err = lfp_close(cfile);
+        CHECK(err == LFP_OK);
+    }
 }
