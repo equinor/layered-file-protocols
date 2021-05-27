@@ -115,7 +115,7 @@ jobs:
 
   ubsan:
     docker:
-      - image: ubuntu:rolling
+      - image: ubuntu:latest
     environment:
       DEBIAN_FRONTEND: noninteractive
     steps:

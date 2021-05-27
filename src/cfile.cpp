@@ -121,7 +121,7 @@ private:
 
     using unique_file = std::unique_ptr< FILE, del >;
     unique_file fp;
-    long zero = 0;
+    std::int64_t zero = 0;
     std::string ftell_errmsg;
 };
 
