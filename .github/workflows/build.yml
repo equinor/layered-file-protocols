@@ -1,0 +1,56 @@
+name: Build on Linux
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  gcc:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:stable
+    steps:
+    - uses: actions/checkout@v4
+    - uses: "./.github/actions/install_build_deps"
+    - uses: "./.github/actions/cmake_build_and_test"
+
+  clang:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:stable
+    env:
+      CC: "/usr/bin/clang"
+      CXX: "/usr/bin/clang++"
+    steps:
+    - uses: actions/checkout@v4
+    - uses: "./.github/actions/install_build_deps"
+      with:
+        extra: clang
+    - uses: "./.github/actions/cmake_build_and_test"
+
+  debug:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:stable
+    steps:
+    - uses: actions/checkout@v4
+    - uses: "./.github/actions/install_build_deps"
+    - uses: "./.github/actions/cmake_build_and_test"
+      with:
+        build_type: Debug
+        cxxflags: "-Werror"
+
+  docs-and-examples:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:stable
+    steps:
+    - uses: actions/checkout@v4
+    - uses: "./.github/actions/install_build_deps"
+      with:
+        extra: python3-breathe python3-sphinx doxygen
+    - uses: "./.github/actions/cmake_build_and_test"
+      with:
+        cmakeflags: "-DBUILD_DOC=ON -DBUILD_EXAMPLES=ON"

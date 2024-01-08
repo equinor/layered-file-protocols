@@ -1,0 +1,23 @@
+name: Static Analysis
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  scan-build:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:stable
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: "./.github/actions/install_build_deps"
+      with:
+        extra: clang clang-tools libfindbin-libs-perl
+
+    - uses: "./.github/actions/cmake_build_and_test"
+      with:
+        cmake_cmd_prefix: scan-build --status-bugs

@@ -1,0 +1,26 @@
+name: Runtime Analysis
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  ubsan:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:latest
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: "./.github/actions/install_build_deps"
+      with:
+        extra: libubsan1
+
+    - uses: "./.github/actions/cmake_build_and_test"
+      with:
+        build_type: RelWithDebInfo
+        cxxflags: "-fsanitize=address,undefined"
