@@ -1,0 +1,25 @@
+name: Build on MacOS
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  macos_build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os:
+          - macos-11
+          - macos-12
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: brew install cmake fmt
+
+    - name: Build and test
+      uses: "./.github/actions/cmake_build_and_test"

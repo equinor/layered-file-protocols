@@ -1,5 +1,9 @@
-ARG image
-FROM $image
+FROM s390x/debian as setup
+RUN useradd --create-home --shell /bin/bash ci
+RUN apt-get update
+RUN apt-get install -y cmake g++ git libfmt-dev
+
+FROM setup
 WORKDIR /home/ci
 COPY --chown=ci:ci . /home/ci/lfp
 WORKDIR /home/ci/lfp/build

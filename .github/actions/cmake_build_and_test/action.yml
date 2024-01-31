@@ -1,0 +1,44 @@
+name: Build and test with cmake
+description: Common steps for library build/test/install using cmake
+inputs:
+  build_type:
+    description: CMAKE_BUILD_TYPE (Release, Debug, etc)
+    required: false
+    default: Release
+  cmake_cmd_prefix:
+    description: Cmake command prefix
+    required: false
+    default: ''
+  cmakeflags:
+    description: Additional Cmake flags
+    required: false
+    default: ''
+  cxxflags:
+    description: CXX_FLAGS
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+  - name: Configure
+    run: |-
+      mkdir build
+      cd build
+      ${{ inputs.cmake_cmd_prefix }} \
+      cmake -DBUILD_SHARED_LIBS=ON \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_BUILD_TYPE=${{ inputs.build_type }} \
+            -DCMAKE_CXX_FLAGS=${{ inputs.cxxflags }} \
+            ${{ inputs.cmakeflags }} \
+            ..
+    shell: bash
+
+  - name: Build and install
+    run: "${{ inputs.cmake_cmd_prefix }} cmake --build build --target install"
+    shell: bash
+
+  - name: Test
+    run: |-
+      cd build
+      ctest --verbose
+    shell: bash
