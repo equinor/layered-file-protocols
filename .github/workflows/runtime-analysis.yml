@@ -1,4 +1,5 @@
 name: Runtime Analysis
+permissions: {}
 on:
   push:
     branches: [master]

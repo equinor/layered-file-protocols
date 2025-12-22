@@ -1,4 +1,5 @@
 name: Build on MacOS
+permissions: {}
 on:
   push:
     branches: [master]
