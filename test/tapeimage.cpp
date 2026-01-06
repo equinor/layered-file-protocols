@@ -537,6 +537,7 @@ TEST_CASE(
     };
 
     std::FILE* fp = std::tmpfile();
+    REQUIRE(fp);
     std::fwrite(contents.data(), 1, contents.size(), fp);
     std::rewind(fp);
 
@@ -986,6 +987,7 @@ TEST_CASE(
     };
 
     std::FILE* fp = std::tmpfile();
+    REQUIRE(fp);
     std::fwrite(contents.data(), 1, contents.size(), fp);
     std::rewind(fp);
 
