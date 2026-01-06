@@ -14,8 +14,7 @@ jobs:
     strategy:
       matrix:
         os:
-          - macos-11
-          - macos-12
+          - macos-latest
     steps:
     - uses: actions/checkout@v4
 
@@ -24,3 +23,5 @@ jobs:
 
     - name: Build and test
       uses: "./.github/actions/cmake_build_and_test"
+      with:
+        cmake_cmd_prefix: sudo

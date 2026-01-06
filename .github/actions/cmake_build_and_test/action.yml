@@ -24,7 +24,6 @@ runs:
     run: |-
       mkdir build
       cd build
-      ${{ inputs.cmake_cmd_prefix }} \
       cmake -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DCMAKE_BUILD_TYPE=${{ inputs.build_type }} \
