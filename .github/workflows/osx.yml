@@ -18,8 +18,9 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
-    - name: Install dependencies
-      run: brew install cmake fmt
+    - uses: "./.github/actions/install_build_deps"
+      with:
+        privileges: sudo
 
     - name: Build and test
       uses: "./.github/actions/cmake_build_and_test"
