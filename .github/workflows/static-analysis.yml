@@ -13,7 +13,7 @@ jobs:
     container:
       image: debian:stable
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - uses: "./.github/actions/install_build_deps"
       with:

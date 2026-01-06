@@ -34,7 +34,7 @@ jobs:
     - name: Explicitly disable autocrlf
       run: git config --global core.autocrlf false
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     - name: Install fmtlib
       shell: bash
