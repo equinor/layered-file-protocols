@@ -717,6 +717,7 @@ TEST_CASE(
     };
 
     std::FILE* fp = std::tmpfile();
+    REQUIRE(fp);
     std::fwrite(contents.data(), 1, contents.size(), fp);
     std::rewind(fp);
 
@@ -768,6 +769,7 @@ TEST_CASE(
     "[visible envelope][rp66]") {
 
     std::FILE* fp = std::tmpfile();
+    REQUIRE(fp);
     std::fputs("Very simple file", fp);
     std::rewind(fp);
 

@@ -49,6 +49,7 @@ TEST_CASE(
     "[cfile][close]") {
 
     std::FILE* fp = std::tmpfile();
+    REQUIRE(fp);
     std::fputs("Very simple file", fp);
     std::rewind(fp);
 
@@ -75,6 +76,7 @@ TEST_CASE(
         0x24, 0x00, 0x00, 0x00,
     };
     std::FILE* fp = std::tmpfile();
+    REQUIRE(fp);
     std::fwrite(contents.data(), 1, contents.size(), fp);
     std::rewind(fp);
 
@@ -144,6 +146,7 @@ TEST_CASE(
     "Unsupported peel leaves the protocol intact",
     "[cfile][peel]") {
     std::FILE* fp = std::tmpfile();
+    REQUIRE(fp);
     std::fputs("Very simple file" , fp);
     std::rewind(fp);
 
@@ -169,6 +172,7 @@ TEST_CASE(
     "Unsupported peek leaves the protocol intact",
     "[cfile][peek]") {
     std::FILE* fp = std::tmpfile();
+    REQUIRE(fp);
     std::fputs("Very simple file" , fp);
     std::rewind(fp);
 
@@ -344,6 +348,7 @@ TEST_CASE(
     const std::int64_t begin = 2*GB - 1;
 
     std::FILE* fp = std::tmpfile();
+    REQUIRE(fp);
     std::fseek(fp, begin, SEEK_SET);
     std::fputs(s.c_str(), fp);
     std::rewind(fp);

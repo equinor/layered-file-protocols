@@ -13,7 +13,7 @@ jobs:
     container:
       image: debian:stable
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: "./.github/actions/install_build_deps"
     - uses: "./.github/actions/cmake_build_and_test"
 
@@ -25,7 +25,7 @@ jobs:
       CC: "/usr/bin/clang"
       CXX: "/usr/bin/clang++"
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: "./.github/actions/install_build_deps"
       with:
         extra: clang
@@ -36,7 +36,7 @@ jobs:
     container:
       image: debian:stable
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: "./.github/actions/install_build_deps"
     - uses: "./.github/actions/cmake_build_and_test"
       with:
@@ -48,7 +48,7 @@ jobs:
     container:
       image: debian:stable
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - uses: "./.github/actions/install_build_deps"
       with:
         extra: python3-breathe python3-sphinx doxygen

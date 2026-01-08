@@ -9,7 +9,7 @@ on:
 
 jobs:
   windows_build:
-    runs-on: windows-2019
+    runs-on: windows-2022
     strategy:
       matrix:
         platform:
@@ -22,11 +22,11 @@ jobs:
         - ON
         include:
         - platform: x86
-          cmake_generator: '-G "Visual Studio 16 2019" -A Win32'
+          cmake_generator: '-G "Visual Studio 17 2022" -A Win32'
         - platform: x64
-          cmake_generator: '-G "Visual Studio 16 2019" -A x64'
+          cmake_generator: '-G "Visual Studio 17 2022" -A x64'
         - platform: x64
-          cmake_generator: '-G "Visual Studio 16 2019" -A x64'
+          cmake_generator: '-G "Visual Studio 17 2022" -A x64'
           config: Release
           fmt-header-only: OFF
 
@@ -34,20 +34,11 @@ jobs:
     - name: Explicitly disable autocrlf
       run: git config --global core.autocrlf false
 
-    - uses: actions/checkout@v4
-
-    - name: Install fmtlib
-      shell: bash
-      run: |
-        git clone https://github.com/fmtlib/fmt.git
-        mkdir fmt/build
-        cd fmt/build
-        cmake -DFMT_TEST=OFF \
-              -DFMT_DOC=OFF \
-              -DCMAKE_BUILD_TYPE=Release \
-              ${{ matrix.cmake_generator }} \
-              ..
-        cmake --build . --config Release --target install
+    - uses: actions/checkout@v6
+    - uses: "./.github/actions/install_build_deps"
+      with:
+        privileges: ""
+        cmake_generator: ${{ matrix.cmake_generator }}
 
     - name: Build and test lfp
       shell: bash
